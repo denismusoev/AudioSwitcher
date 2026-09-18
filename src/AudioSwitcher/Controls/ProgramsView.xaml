@@ -1,5 +1,13 @@
 <UserControl x:Class="AudioSwitcher.Controls.ProgramsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <UserControl.Resources>
+    <Style x:Key="ProgramModeTab" TargetType="Button" BasedOn="{StaticResource SectionTab}">
+      <Setter Property="FontSize" Value="16"/><Setter Property="MinHeight" Value="36"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/></ControlTemplate></Setter.Value></Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource Text}"/></Trigger>
+        <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="{StaticResource Text}"/></Trigger>
+      </Style.Triggers>
+    </Style>
     <DataTemplate x:Key="ProgramRow">
       <StackPanel><TextBlock Text="{Binding DisplayName}" FontSize="16" TextWrapping="Wrap"/><TextBlock Text="{Binding DisplayDetails}" FontSize="12" Foreground="{StaticResource MutedText}" Margin="0,4,0,0" TextWrapping="Wrap"/></StackPanel>
     </DataTemplate>
@@ -15,8 +23,8 @@
     <Grid x:Name="ListsSurface">
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <WrapPanel Margin="4,0,0,12">
-        <Button x:Name="RunningMode" Content="Запущенные" Click="RunningClick" AutomationProperties.Name="Запущенные приложения" Margin="0,0,6,0"/>
-        <Button x:Name="LaunchMode" Content="Для запуска" Click="LaunchClick" AutomationProperties.Name="Каталог для запуска"/>
+        <Button x:Name="RunningMode" Style="{StaticResource ProgramModeTab}" Content="Запущенные" Click="RunningClick" AutomationProperties.Name="Запущенные приложения" Margin="8,0,18,0"/>
+        <Button x:Name="LaunchMode" Style="{StaticResource ProgramModeTab}" Content="Для запуска" Click="LaunchClick" AutomationProperties.Name="Каталог для запуска"/>
       </WrapPanel>
       <Grid Grid.Row="1">
         <ListBox x:Name="RunningList" Style="{StaticResource ProgramList}" MouseDoubleClick="ListDoubleClick" AutomationProperties.Name="Запущенные пользовательские приложения"/>

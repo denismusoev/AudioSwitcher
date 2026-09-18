@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -15,6 +16,7 @@ public sealed class ProgramWindowService
     {
         var groups = new Dictionary<ProcessIdentity, (string Name, List<WindowTarget> Windows)>();
         var cache = new Dictionary<int, (ProcessIdentity Identity, string Image, bool Allowed)>();
+        var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         bool enumerated = ProgramNative.EnumWindows((window, _) => {
             if (cancellationToken.IsCancellationRequested) return false;
             try
@@ -40,7 +42,15 @@ public sealed class ProgramWindowService
                 string name = string.IsNullOrWhiteSpace(title.ToString()) ? Path.GetFileNameWithoutExtension(process.Image) : title.ToString();
                 var monitor = ProgramNative.Monitor(ProgramNative.MonitorFromWindow(window, 2));
                 string screen = monitor.Device.Replace("\\\\.\\", "") + ((monitor.Flags & 1) != 0 ? " · Главный" : "");
-                if (!groups.TryGetValue(process.Identity, out var group)) { group = (name, []); groups.Add(process.Identity, group); }
+                if (!groups.TryGetValue(process.Identity, out var group))
+                {
+                    if (!names.TryGetValue(process.Image, out string? applicationName))
+                    {
+                        applicationName = ApplicationName(process.Image);
+                        names.Add(process.Image, applicationName);
+                    }
+                    group = (applicationName, []); groups.Add(process.Identity, group);
+                }
                 group.Windows.Add(new(process.Identity, window, name, screen, ProgramNative.IsHungAppWindow(window)));
             }
             catch (Exception ex) when (ex is Win32Exception or UnauthorizedAccessException or ArgumentException) { /* Window exited or cannot be verified. */ }
@@ -50,5 +60,17 @@ public sealed class ProgramWindowService
         if (!enumerated) throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows не предоставила доступ к списку окон текущего рабочего стола");
         return groups.Select(g => new RunningProgram(g.Key, g.Value.Name, g.Value.Windows.OrderBy(w => w.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(w => w.Handle).ToArray()))
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(p => p.Identity.Pid).ToArray();
+    }
+
+    private static string ApplicationName(string image)
+    {
+        try
+        {
+            var metadata = FileVersionInfo.GetVersionInfo(image);
+            if (!string.IsNullOrWhiteSpace(metadata.FileDescription)) return metadata.FileDescription.Trim();
+            if (!string.IsNullOrWhiteSpace(metadata.ProductName)) return metadata.ProductName.Trim();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception or ArgumentException) { /* Metadata is optional. */ }
+        return Path.GetFileNameWithoutExtension(image);
     }
 }

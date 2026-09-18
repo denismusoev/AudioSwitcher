@@ -67,6 +67,13 @@ try
         Require(first.Identity != second.Identity, "Separate processes were merged");
         Require(first.Windows.Count == 1 && first.Windows[0].Title.Contains("one"), "Wrong window");
     });
+    await Check("Running application names use EXE metadata while window choices retain captions", async () => {
+        var first = await Start("document one"); var second = await Start("document two", "--multiple");
+        Require(first.Name == "AudioSwitcher Test Application", $"Expected application name, got {first.Name}");
+        Require(second.Name == first.Name, "Application name depends on its window caption");
+        Require(first.Windows[0].Title == "AudioSwitcher fixture document one", "Window caption was lost");
+        Require(second.Windows.Count == 2 && second.Windows.Select(w => w.Title).Distinct().Count() == 2, "Window choices lost their distinct captions");
+    });
     await Check("Multiple windows are grouped by verified process instance", async () => {
         var program = await Start("multiple", "--multiple");
         Require(program.Windows.Count == 2, $"Expected two windows, got {program.Windows.Count}");

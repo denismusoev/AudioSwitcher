@@ -81,8 +81,8 @@ public partial class ProgramsView : UserControl
         RunningList.Visibility = Navigation.LaunchList ? Visibility.Collapsed : Visibility.Visible;
         LaunchList.Visibility = Navigation.LaunchList ? Visibility.Visible : Visibility.Collapsed;
         CatalogTools.Visibility = Navigation.LaunchList ? Visibility.Visible : Visibility.Collapsed;
-        RunningMode.BorderBrush = Navigation.LaunchList ? System.Windows.Media.Brushes.Transparent : (System.Windows.Media.Brush)FindResource("Accent");
-        LaunchMode.BorderBrush = Navigation.LaunchList ? (System.Windows.Media.Brush)FindResource("Accent") : System.Windows.Media.Brushes.Transparent;
+        RunningMode.Foreground = (System.Windows.Media.Brush)FindResource(Navigation.LaunchList ? "MutedText" : "Text");
+        LaunchMode.Foreground = (System.Windows.Media.Brush)FindResource(Navigation.LaunchList ? "Text" : "MutedText");
         UpdateEmpty(); ContextChanged?.Invoke();
     }
     private void UpdateEmpty()
