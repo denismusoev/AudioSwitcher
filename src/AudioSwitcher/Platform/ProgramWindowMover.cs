@@ -88,8 +88,7 @@ public sealed class ProgramWindowMover
             var area = borderless ? destination.Monitor : destination.Work;
             // Maximized windows include an invisible resize border beyond the work area.
             int tolerance = maximized ? Math.Max(16, (int)(targetDpi / 6)) : 3;
-            if (actual.Left < area.Left - tolerance || actual.Top < area.Top - tolerance ||
-                actual.Right > area.Right + tolerance || actual.Bottom > area.Bottom + tolerance) continue;
+            if (!ProgramWindowLayout.IsSufficientlyOnScreen(actual.Bounds, area.Bounds, tolerance)) continue;
             if (borderless && (Math.Abs(actual.Left - area.Left) > 3 || Math.Abs(actual.Top - area.Top) > 3 ||
                 Math.Abs(actual.Right - area.Right) > 3 || Math.Abs(actual.Bottom - area.Bottom) > 3)) continue;
             // Allow the application and DPI change to settle before declaring success.

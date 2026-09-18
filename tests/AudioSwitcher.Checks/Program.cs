@@ -57,6 +57,11 @@ Check("Window layout scales for target DPI and clamps oversized windows", () => 
 Check("Borderless full monitor window uses whole TV bounds", () => {
     Equal(new WindowBounds(0, 0, 3840, 2160), ProgramWindowLayout.Calculate(new(-1920, 0, 1920, 1080), new(0, 0, 3840, 2120), 96, 144, true, new(0, 0, 3840, 2160)));
 });
+Check("Window placement accepts a mostly contained frame and rejects a sliver", () => {
+    var area = new WindowBounds(0, 0, 1000, 800);
+    if (!ProgramWindowLayout.IsSufficientlyOnScreen(new(700, 100, 500, 500), area, 3)) throw new Exception("Mostly visible frame was rejected");
+    if (ProgramWindowLayout.IsSufficientlyOnScreen(new(980, 100, 500, 500), area, 3)) throw new Exception("Mostly off-screen frame was accepted");
+});
 Check("Program panels cancel before closing the application", () => {
     var navigation = new NavigationState { Section = AppSection.Programs, Panel = ProgramPanel.ConfirmTermination };
     Equal(true, navigation.Back()); Equal(ProgramPanel.Actions, navigation.Panel);

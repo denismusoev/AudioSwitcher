@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Programs.SetModalHost(ProgramModalHost);
         SizeChanged += (_, _) => {
             Resources["MarkerTextVisibility"] = ActualWidth < 380 ? Visibility.Collapsed : Visibility.Visible;
             AudioTab.FontSize = DisplayTab.FontSize = ProgramsTab.FontSize = ActualWidth < 420 ? 16 : 22;

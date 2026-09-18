@@ -53,6 +53,7 @@
           </StackPanel>
         </WrapPanel>
       </Border>
+      <ContentControl x:Name="ProgramModalHost" Grid.RowSpan="4" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
     </Grid>
   </Border>
 </Window>

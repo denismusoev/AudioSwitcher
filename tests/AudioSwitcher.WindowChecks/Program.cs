@@ -5,7 +5,9 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using AudioSwitcher;
 using AudioSwitcher.Controls;
@@ -177,22 +179,66 @@ internal static class Program
                         switchSection.Invoke(window, [AppSection.Audio]);
                     }
                 });
-                await Check("Saved catalog edit reopens with latest saved values from action panel", async () => {
+                await Check("Single click opens catalog modal actions; repeated edits use latest saved values", async () => {
                     var directory = Path.Combine(Path.GetTempPath(), "AudioSwitcher-EditorChecks-" + Guid.NewGuid());
                     Directory.CreateDirectory(directory);
                     var store = new LaunchCatalogStore(Path.Combine(directory, "programs.json"));
                     var original = new LaunchEntry(Guid.NewGuid(), "Original fixture", LaunchKind.Executable, Environment.ProcessPath!, "--original", directory);
                     store.Save(new(1, [original]));
                     var view = new ProgramsView(store);
-                    var host = new Window { Content = view, Width = 480, Height = 550, Owner = window };
+                    var modalHost = new ContentControl { Visibility = Visibility.Collapsed, HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
+                    var hostContent = new Grid(); hostContent.Children.Add(view); hostContent.Children.Add(modalHost); view.SetModalHost(modalHost);
+                    var host = new Window { Content = hostContent, Width = 480, Height = 550, Owner = window, Background = (Brush)app.FindResource("WindowSurface"), Foreground = (Brush)app.FindResource("Text") };
                     try
                     {
                         host.Show(); view.Navigation.Section = AppSection.Programs; view.SelectMode(true); view.Enter();
                         ((ListBox)view.FindName("LaunchList")).SelectedIndex = 0;
-                        typeof(ProgramsView).GetMethod("ConfigureClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(view, [view, new RoutedEventArgs()]);
+                        // An unavailable target makes accidental immediate launch observable without starting a process.
+                        store.Save(new(1, [original with { Target = Path.Combine(directory, "missing.exe") }]));
+                        view.Leave(); view.Enter();
+                        var catalogList = (ListBox)view.FindName("LaunchList");
+                        host.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                        var catalogItem = (ListBoxItem)catalogList.ItemContainerGenerator.ContainerFromIndex(0);
+                        catalogItem.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = Mouse.PreviewMouseUpEvent });
+                        var menu = (ListBox)view.FindName("ProgramActions");
+                        if (view.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Record must open actions instead of launching immediately");
+                        var labels = menu.Items.Cast<object>().Select(item => (string)item.GetType().GetProperty("DisplayName")!.GetValue(item)!).ToArray();
+                        if (!labels.Take(3).SequenceEqual(new[] { "Запустить", "Удалить", "Редактировать" })) throw new Exception("Record actions missing");
+                        if (view.FindName("ConfigureProgram") != null) throw new Exception("Separate configure button must be removed");
+                        host.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                        if (((Grid)view.FindName("ListsSurface")).IsHitTestVisible || !((Grid)view.FindName("PanelSurface")).IsVisible) throw new Exception("Actions must block the underlying list");
+                        for (int cycle = 0; cycle < 5; cycle++)
+                        {
+                            if (((ListBox)view.FindName("ProgramActions")).Items.Count != 4 || view.FindName("PanelTitle") is not TextBlock title || string.IsNullOrWhiteSpace(title.Text))
+                                throw new Exception($"Modal elements disappeared on cycle {cycle + 1}");
+                            if (!view.Back() || view.Navigation.Panel != ProgramPanel.List) throw new Exception($"Modal Back failed on cycle {cycle + 1}");
+                            ((ListBox)view.FindName("LaunchList")).SelectedIndex = 0;
+                            await view.ConfirmAsync();
+                            host.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                        }
+                        if (args.Contains("--capture-programs"))
+                        {
+                            string imageDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts"));
+                            Directory.CreateDirectory(imageDirectory);
+                            foreach (var size in new[] { (440, 480, "ui-programs-catalog-modal.png"), (300, 340, "ui-programs-catalog-modal-small.png") })
+                            {
+                                host.Width = size.Item1; host.Height = size.Item2 + 40; host.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                                var bitmap = new RenderTargetBitmap((int)Math.Ceiling(hostContent.ActualWidth), (int)Math.Ceiling(hostContent.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+                                bitmap.Render(hostContent); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                                using var output = File.Create(Path.Combine(imageDirectory, size.Item3)); encoder.Save(output);
+                            }
+                            host.Width = 480; host.Height = 550; host.UpdateLayout();
+                        }
+                        string? launchStatus = null; view.StatusChanged += (text, _) => launchStatus = text;
+                        await view.ConfirmAsync();
+                        if (launchStatus != "Файл программы или ярлыка не найден." || ((TextBlock)view.FindName("PanelDescription")).Text != launchStatus || view.Navigation.Panel != ProgramPanel.Actions || ((Grid)view.FindName("ListsSurface")).IsEnabled)
+                            throw new Exception("Launch action did not validate its target or released modal blocking");
+                        // The actual test EXE is used only for editor validation, never launched here.
+                        menu.SelectedIndex = 2;
                         var firstDrive = DriveEditor(host.Dispatcher, dialog => {
                             ((TextBox)dialog.FindName("EntryName")).Text = "Saved fixture 世界";
                             ((TextBox)dialog.FindName("EntryArguments")).Text = "--saved \"two words\"";
+                            ((TextBox)dialog.FindName("EntryTarget")).Text = Environment.ProcessPath!;
                             ((Button)dialog.FindName("SaveEntry")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                         });
                         await view.ConfirmAsync(); await firstDrive;
@@ -204,9 +250,61 @@ internal static class Program
                                 throw new Exception("Reopened editor contains stale values from original catalog entry");
                             dialog.Close();
                         });
+                        menu.SelectedIndex = 2;
                         await view.ConfirmAsync(); await secondDrive;
+                        menu.SelectedIndex = 1; await view.ConfirmAsync();
+                        if (view.Navigation.Panel != ProgramPanel.ConfirmDelete || menu.SelectedIndex != 0) throw new Exception("Deletion must require confirmation defaulting to Cancel");
+                        await view.ConfirmAsync();
+                        if (store.Load().Catalog.Entries.Count != 1 || view.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Cancel deleted the record");
+                        menu.SelectedIndex = 1; await view.ConfirmAsync(); menu.SelectedIndex = 1; await view.ConfirmAsync();
+                        if (store.Load().Catalog.Entries.Count != 0 || view.Navigation.Panel != ProgramPanel.List || !((Grid)view.FindName("ListsSurface")).IsEnabled) throw new Exception("Confirmed deletion failed or list remained blocked");
                     }
                     finally { view.Leave(); host.Close(); Directory.Delete(directory, true); }
+                });
+                await Check("Single click on running program move action reaches the primary monitor", async () => {
+                    MonitorInfo secondary = default;
+                    EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (monitor, _, _, _) => {
+                        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+                        if (GetMonitorInfo(monitor, ref info) && (info.Flags & 1) == 0) secondary = info;
+                        return true;
+                    }, IntPtr.Zero);
+                    if (secondary.Size == 0) throw new CheckSkipped("Second monitor unavailable; no system topology changes");
+                    string configuration = AppContext.BaseDirectory.Contains("Release") ? "Release" : "Debug";
+                    string fixturePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, $"../../../../AudioSwitcher.ProgramFixture/bin/{configuration}/net10.0-windows/AudioSwitcher.ProgramFixture.exe"));
+                    using var fixtureProcess = Process.Start(new ProcessStartInfo(fixturePath) { Arguments = "\"UI move fixture\"", UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden })!;
+                    var programs = (ProgramsView)window.FindName("Programs");
+                    var switchSection = typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    try
+                    {
+                        RunningProgram? fixtureProgram = null;
+                        for (int i = 0; i < 100 && fixtureProgram == null; i++) { fixtureProgram = (await new ProgramWindowService().GetProgramsAsync()).FirstOrDefault(p => p.Identity.Pid == fixtureProcess.Id); if (fixtureProgram == null) await Task.Delay(100); }
+                        if (fixtureProgram == null) throw new Exception("Own fixture not discovered");
+                        nint fixtureWindow = fixtureProgram.Windows[0].Handle;
+                        SetWindowPos(fixtureWindow, IntPtr.Zero, secondary.Work.Left + 60, secondary.Work.Top + 60, 640, 400, 0x4014);
+                        await Task.Delay(700);
+                        if (MonitorFromWindow(fixtureWindow, 2) == MonitorFromPoint(new PointNative(0, 0), 1)) throw new Exception("Fixture did not reach secondary monitor");
+                        switchSection.Invoke(window, [AppSection.Programs]); programs.SelectMode(false); await programs.RefreshAsync(); await Task.Delay(500);
+                        var list = (ListBox)programs.FindName("RunningList"); list.ItemsSource = new[] { fixtureProgram }; list.SelectedIndex = 0;
+                        window.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                        ((ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0)).RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = Mouse.PreviewMouseUpEvent });
+                        if (programs.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Single click did not open running actions");
+                        var actions = (ListBox)programs.FindName("ProgramActions");
+                        window.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                        ((ListBoxItem)actions.ItemContainerGenerator.ContainerFromIndex(0)).RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = Mouse.PreviewMouseUpEvent });
+                        for (int i = 0; i < 50 && programs.IsBusy; i++) await Task.Delay(100);
+                        if (programs.Navigation.Panel != ProgramPanel.List || MonitorFromWindow(fixtureWindow, 2) != MonitorFromPoint(new PointNative(0, 0), 1)) throw new Exception("Single-click move did not complete: " + ((TextBlock)window.FindName("Status")).Text);
+                        if (args.Contains("--capture-programs"))
+                        {
+                            window.UpdateLayout(); var bitmap = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth), (int)Math.Ceiling(window.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+                            bitmap.Render(window); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                            using var output = File.Create(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/ui-programs-after-move.png"))); encoder.Save(output);
+                        }
+                    }
+                    finally
+                    {
+                        if (!fixtureProcess.HasExited) { fixtureProcess.Kill(); fixtureProcess.WaitForExit(3000); }
+                        programs.Navigation.Panel = ProgramPanel.List; switchSection.Invoke(window, [AppSection.Audio]);
+                    }
                 });
                 await Check("Native file picker preserves selected shortcut and saved Shortcut target", async () => {
                     if (!args.Contains("--native-picker")) throw new CheckSkipped("This host's native picker provider did not expose filename ValuePattern; native message fallback left modal blocked. Actual shortcut pick check is opt-in --native-picker on an interactive desktop.");
@@ -386,6 +484,11 @@ internal static class Program
         finally { cleanup.Cancel(); }
     }
     private delegate bool EnumWindowCallback(IntPtr window, IntPtr parameter);
+    private delegate bool MonitorCallback(IntPtr monitor, IntPtr dc, IntPtr rect, IntPtr data);
+    [StructLayout(LayoutKind.Sequential)] private record struct PointNative(int X, int Y);
+    [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr rect, MonitorCallback callback, IntPtr data);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(PointNative point, uint flags);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     private sealed class CheckSkipped(string message) : Exception(message);
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowCallback callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumWindowCallback callback, IntPtr parameter);
