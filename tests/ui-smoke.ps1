@@ -44,6 +44,21 @@ try {
         $element = Find-Control 'Status'
         if (-not $element.Current.Name.Contains($Text)) { throw "Unexpected status: $($element.Current.Name)" }
     }
+    $artifactPath = Join-Path $PSScriptRoot '../artifacts'
+    New-Item -ItemType Directory -Path $artifactPath -Force | Out-Null
+    function Save-ProgramImage([string]$Name) {
+        $programBounds = New-Object SmokeNative+Rect
+        [SmokeNative]::GetWindowRect($app.MainWindowHandle, [ref]$programBounds) | Out-Null
+        $programShot = New-Object System.Drawing.Bitmap(($programBounds.Right - $programBounds.Left), ($programBounds.Bottom - $programBounds.Top))
+        $programCanvas = [System.Drawing.Graphics]::FromImage($programShot)
+        try { $programCanvas.CopyFromScreen($programBounds.Left, $programBounds.Top, 0, 0, $programShot.Size); $programShot.Save((Join-Path $artifactPath $Name)) }
+        finally { $programCanvas.Dispose(); $programShot.Dispose() }
+    }
+    function Send-SmokeKey([int]$Key) {
+        [SmokeNative]::PostMessage($app.MainWindowHandle, 0x100, [IntPtr]$Key, [IntPtr]0) | Out-Null
+        [SmokeNative]::PostMessage($app.MainWindowHandle, 0x101, [IntPtr]$Key, [IntPtr]0) | Out-Null
+        Start-Sleep -Milliseconds 180
+    }
     Find-Control 'Devices' | Out-Null
     foreach ($removedId in @('ApplyButton', 'CloseButton', 'PadStatus', 'SectionLabel')) {
         $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $removedId)
@@ -65,6 +80,42 @@ try {
     Assert-Status 'Готово'
     if ((Find-Control 'Devices').Current.Name -ne 'Устройства вывода') { throw 'Return to audio section failed' }
     Write-Output 'PASS Return to audio section'
+    Invoke-Control 'ProgramsTab'
+    Start-Sleep -Milliseconds 500
+    Find-Control 'RunningList' | Out-Null
+    Invoke-Control 'LaunchMode'
+    if ((Find-Control 'LaunchList').Current.IsOffscreen) { throw 'Launch list must be visible' }
+    $runningCondition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'RunningList')
+    $hiddenRunningList = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $runningCondition)
+    if ($null -ne $hiddenRunningList -and -not $hiddenRunningList.Current.IsOffscreen) { throw 'Running and launch lists must be separated' }
+    Find-Control 'AddProgram' | Out-Null
+    Save-ProgramImage 'ui-programs-launch.png'
+    Invoke-Control 'RunningMode'
+    if ((Find-Control 'RunningList').Current.IsOffscreen) { throw 'Running list must be visible' }
+    Write-Output 'PASS Programs section separates running applications and manual launch catalog'
+    Save-ProgramImage 'ui-programs-running.png'
+    $programList = Find-Control 'RunningList'
+    $programItemCondition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)
+    if ($programList.FindAll([System.Windows.Automation.TreeScope]::Children, $programItemCondition).Count -gt 0) {
+        $programList.SetFocus()
+        Send-SmokeKey 13
+        $programActions = Find-Control 'ProgramActions'
+        Save-ProgramImage 'ui-programs-actions.png'
+        $actionRows = $programActions.FindAll([System.Windows.Automation.TreeScope]::Children, $programItemCondition)
+        $actionRows[1].GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+        Send-SmokeKey 13
+        $confirmation = Find-Control 'ProgramActions'
+        $defaultChoice = $confirmation.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()[0]
+        if ($defaultChoice.Current.Name -ne 'Отмена') { throw 'Termination must default to Cancel' }
+        Save-ProgramImage 'ui-programs-confirm.png'
+        Send-SmokeKey 13
+        if ((Find-Control 'PanelDescription').Current.Name -ne 'Выберите действие') { throw 'Default confirmation did not cancel' }
+        Send-SmokeKey 27
+        Find-Control 'RunningList' | Out-Null
+        if ($app.HasExited) { throw 'Esc must return from actions before closing app' }
+        Write-Output 'PASS Termination defaults to Cancel; Enter cancels and Esc returns from actions'
+    } else { Write-Output 'SKIP Program action UI: no user application windows available' }
+    Invoke-Control 'AudioTab'
     $artifactPath = Join-Path $PSScriptRoot '../artifacts'
     New-Item -ItemType Directory -Path $artifactPath -Force | Out-Null
     if ($ScrollComparison) {
@@ -102,6 +153,12 @@ try {
     $scale = [SmokeNative]::GetDpiForWindow($app.MainWindowHandle) / 96.0
     [SmokeNative]::SetWindowPos($app.MainWindowHandle, [IntPtr]::Zero, 0, 0, [int](340 * $scale), [int](400 * $scale), 6) | Out-Null
     Start-Sleep -Milliseconds 200
+    Invoke-Control 'ProgramsTab'
+    Start-Sleep -Milliseconds 400
+    Save-ProgramImage 'ui-programs-running-small.png'
+    Invoke-Control 'LaunchMode'
+    Save-ProgramImage 'ui-programs-launch-small.png'
+    Invoke-Control 'AudioTab'
     [SmokeNative]::GetWindowRect($app.MainWindowHandle, [ref]$rect) | Out-Null
     $bitmap = New-Object System.Drawing.Bitmap(($rect.Right - $rect.Left), ($rect.Bottom - $rect.Top))
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)

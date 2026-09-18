@@ -1,0 +1,19 @@
+<Window x:Class="AudioSwitcher.Controls.LaunchEntryDialog" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Добавить программу" Width="460" Height="530" MinWidth="340" MinHeight="340" WindowStartupLocation="CenterOwner" Background="{StaticResource WindowSurface}" Foreground="{StaticResource Text}" Topmost="True" PreviewKeyDown="DialogKeyDown">
+  <Window.Resources>
+    <Style TargetType="TextBox"><Setter Property="Background" Value="#17181C"/><Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="Padding" Value="8"/><Setter Property="FontSize" Value="14"/><Setter Property="Margin" Value="0,4,0,14"/></Style>
+  </Window.Resources>
+  <Grid Margin="20">
+    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <TextBlock Text="Название"/><TextBox x:Name="EntryName" AutomationProperties.Name="Название программы"/>
+        <TextBlock Text="Программа или ярлык"/>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="EntryTarget" TextChanged="TargetChanged" AutomationProperties.Name="Путь к программе или ярлыку"/><Button Grid.Column="1" Content="Обзор…" Click="BrowseClick" VerticalAlignment="Top" Margin="8,4,0,0"/></Grid>
+        <TextBlock x:Name="ShortcutHint" Text="Параметры запуска задаются в самом ярлыке" FontSize="12" Foreground="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"/>
+        <StackPanel x:Name="ExecutableOptions"><TextBlock Text="Аргументы (необязательно)"/><TextBox x:Name="EntryArguments" AutomationProperties.Name="Аргументы запуска"/><TextBlock Text="Рабочая папка (необязательно)"/><TextBox x:Name="EntryDirectory" AutomationProperties.Name="Рабочая папка"/></StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+    <TextBlock x:Name="EditorError" Grid.Row="1" Foreground="#E8B9B3" TextWrapping="Wrap" Margin="0,12,0,12" AutomationProperties.LiveSetting="Polite"/>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Отмена" IsCancel="True"/><Button x:Name="SaveEntry" Content="Сохранить" Click="SaveClick" Margin="8,0,0,0" IsDefault="True"/></StackPanel>
+  </Grid>
+</Window>

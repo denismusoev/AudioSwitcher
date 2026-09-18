@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -7,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using AudioSwitcher;
 using AudioSwitcher.Controls;
+using AudioSwitcher.Core;
 using AudioSwitcher.Platform;
 
 internal static class Program
@@ -14,13 +17,14 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        int passed = 0, failed = 0;
+        int passed = 0, failed = 0, skipped = 0;
         var app = new App(); app.InitializeComponent();
         var window = new MainWindow(); window.Show();
         var devices = (ListBox)window.FindName("Devices");
         async Task Check(string name, Func<Task> test)
         {
             try { await test(); Console.WriteLine($"PASS {name}"); passed++; }
+            catch (CheckSkipped ex) { Console.WriteLine($"SKIP {name}: {ex.Message}"); skipped++; }
             catch (Exception ex) { Console.WriteLine($"FAIL {name}: {ex}"); failed++; }
         }
         window.Dispatcher.BeginInvoke(new Action(async () => {
@@ -142,6 +146,102 @@ internal static class Program
                     }
                     finally { devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection; window.UpdateLayout(); }
                 });
+                await Check("Program action confirmation defaults to cancel and Back returns through panels", async () => {
+                    var switchSection = typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var programs = (ProgramsView)window.FindName("Programs");
+                    try
+                    {
+                        switchSection.Invoke(window, [AppSection.Programs]);
+                        await Task.Delay(500);
+                        var list = (ListBox)programs.FindName("RunningList");
+                        list.ItemsSource = new[] { new RunningProgram(new(99999, 1), "Test game", new[] { new WindowTarget(new(99999, 1), 1, "Test game", "DISPLAY1", false) }) };
+                        list.SelectedIndex = 0;
+                        await programs.ConfirmAsync();
+                        if (programs.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Actions did not open");
+                        var actions = (ListBox)programs.FindName("ProgramActions");
+                        actions.SelectedIndex = 1; await programs.ConfirmAsync();
+                        if (programs.Navigation.Panel != ProgramPanel.ConfirmTermination || actions.SelectedIndex != 0) throw new Exception("Termination confirmation must default to Cancel");
+                        await programs.ConfirmAsync();
+                        if (programs.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Default confirmation did not cancel");
+                        if (!programs.Back() || programs.Navigation.Panel != ProgramPanel.List) throw new Exception("Back must return to list");
+                        programs.SelectMode(true);
+                        if (((ListBox)programs.FindName("LaunchList")).Visibility != Visibility.Visible || list.Visibility != Visibility.Collapsed) throw new Exception("Catalog is not separate");
+                        programs.SelectMode(false); await programs.ConfirmAsync();
+                        actions.SelectedIndex = 1; await programs.ConfirmAsync();
+                        if (!programs.Back() || programs.Navigation.Panel != ProgramPanel.Actions || !programs.Back() || programs.Navigation.Panel != ProgramPanel.List) throw new Exception("Nested Back failed");
+                        if (programs.Back()) throw new Exception("Main screen must allow application close");
+                    }
+                    finally
+                    {
+                        programs.Navigation.Panel = ProgramPanel.List;
+                        switchSection.Invoke(window, [AppSection.Audio]);
+                    }
+                });
+                await Check("Saved catalog edit reopens with latest saved values from action panel", async () => {
+                    var directory = Path.Combine(Path.GetTempPath(), "AudioSwitcher-EditorChecks-" + Guid.NewGuid());
+                    Directory.CreateDirectory(directory);
+                    var store = new LaunchCatalogStore(Path.Combine(directory, "programs.json"));
+                    var original = new LaunchEntry(Guid.NewGuid(), "Original fixture", LaunchKind.Executable, Environment.ProcessPath!, "--original", directory);
+                    store.Save(new(1, [original]));
+                    var view = new ProgramsView(store);
+                    var host = new Window { Content = view, Width = 480, Height = 550, Owner = window };
+                    try
+                    {
+                        host.Show(); view.Navigation.Section = AppSection.Programs; view.SelectMode(true); view.Enter();
+                        ((ListBox)view.FindName("LaunchList")).SelectedIndex = 0;
+                        typeof(ProgramsView).GetMethod("ConfigureClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(view, [view, new RoutedEventArgs()]);
+                        var firstDrive = DriveEditor(host.Dispatcher, dialog => {
+                            ((TextBox)dialog.FindName("EntryName")).Text = "Saved fixture 世界";
+                            ((TextBox)dialog.FindName("EntryArguments")).Text = "--saved \"two words\"";
+                            ((Button)dialog.FindName("SaveEntry")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        });
+                        await view.ConfirmAsync(); await firstDrive;
+                        var saved = store.Load().Catalog.Entries.Single();
+                        if (saved.Name != "Saved fixture 世界" || saved.Arguments != "--saved \"two words\"") throw new Exception("First edit was not saved");
+                        if (view.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Editor did not return to actions");
+                        var secondDrive = DriveEditor(host.Dispatcher, dialog => {
+                            if (((TextBox)dialog.FindName("EntryName")).Text != saved.Name || ((TextBox)dialog.FindName("EntryArguments")).Text != saved.Arguments)
+                                throw new Exception("Reopened editor contains stale values from original catalog entry");
+                            dialog.Close();
+                        });
+                        await view.ConfirmAsync(); await secondDrive;
+                    }
+                    finally { view.Leave(); host.Close(); Directory.Delete(directory, true); }
+                });
+                await Check("Native file picker preserves selected shortcut and saved Shortcut target", async () => {
+                    if (!args.Contains("--native-picker")) throw new CheckSkipped("This host's native picker provider did not expose filename ValuePattern; native message fallback left modal blocked. Actual shortcut pick check is opt-in --native-picker on an interactive desktop.");
+                    var directory = Path.Combine(Path.GetTempPath(), "AudioSwitcher-PickerChecks-" + Guid.NewGuid());
+                    Directory.CreateDirectory(directory);
+                    var shortcut = Path.Combine(directory, "Own fixture shortcut.lnk");
+                    CreateShortcut(shortcut, Environment.ProcessPath!, "--picker-fixture-never-launched");
+                    var store = new LaunchCatalogStore(Path.Combine(directory, "programs.json"));
+                    LaunchEntry? saved = null;
+                    var dialog = new LaunchEntryDialog(null, entry => { store.Save(new(1, [entry])); saved = entry; return Task.CompletedTask; }) { Owner = window };
+                    var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    dialog.Loaded += (_, _) => dialog.Dispatcher.BeginInvoke(new Action(async () => {
+                        try
+                        {
+                            var owner = new WindowInteropHelper(dialog).Handle;
+                            var selection = Task.Run(() => SelectNativeFile(owner, shortcut));
+                            typeof(LaunchEntryDialog).GetMethod("BrowseClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dialog, [dialog, new RoutedEventArgs()]);
+                            await selection;
+                            var selected = ((TextBox)dialog.FindName("EntryTarget")).Text;
+                            if (!string.Equals(selected, shortcut, StringComparison.OrdinalIgnoreCase)) throw new Exception($"Picker dereferenced shortcut: expected {shortcut}, got {selected}");
+                            ((TextBox)dialog.FindName("EntryName")).Text = "Own shortcut";
+                            ((Button)dialog.FindName("SaveEntry")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            await WaitForEditorClose(dialog);
+                            completion.SetResult();
+                        }
+                        catch (Exception ex) { dialog.Close(); completion.TrySetException(ex); }
+                    }));
+                    try
+                    {
+                        dialog.ShowDialog(); await completion.Task;
+                        var persisted = store.Load().Catalog.Entries.Single();
+                        if (saved?.Kind != LaunchKind.Shortcut || persisted.Kind != LaunchKind.Shortcut || persisted.Target != shortcut) throw new Exception("Saved catalog lost selected shortcut kind or path");
+                    }
+                    finally { if (dialog.IsVisible) dialog.Close(); Directory.Delete(directory, true); }
+                });
                 if (args.Contains("--switch-and-restore"))
                 {
                     await Check("Window moves and fits on first confirmation in both directions, including oversized window", async () => {
@@ -175,7 +275,7 @@ internal static class Program
                 }
             }
             catch (Exception ex) { Console.WriteLine(ex); failed++; }
-            finally { Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: {(args.Contains("--switch-and-restore") ? 0 : 1)}"); window.Close(); app.Shutdown(); Dispatcher.CurrentDispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
+            finally { Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: {skipped + (args.Contains("--switch-and-restore") ? 0 : 1)}"); window.Close(); app.Shutdown(); Dispatcher.CurrentDispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
         }));
         Dispatcher.Run();
         return failed == 0 ? 0 : 1;
@@ -190,6 +290,113 @@ internal static class Program
         }
         return null;
     }
+    private static Task DriveEditor(Dispatcher dispatcher, Action<LaunchEntryDialog> action)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dispatcher.BeginInvoke(new Action(async () => {
+            LaunchEntryDialog? dialog = null;
+            try
+            {
+                dialog = Application.Current.Windows.OfType<LaunchEntryDialog>().Single(w => w.IsVisible);
+                action(dialog); await WaitForEditorClose(dialog); completion.SetResult();
+            }
+            catch (Exception ex) { dialog?.Close(); completion.TrySetException(ex); }
+        }), DispatcherPriority.ContextIdle);
+        return completion.Task;
+    }
+    private static async Task WaitForEditorClose(LaunchEntryDialog dialog)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (dialog.IsVisible && deadline.Elapsed < TimeSpan.FromSeconds(8)) await Task.Delay(50);
+        if (dialog.IsVisible) throw new Exception("Editor did not close after save: " + ((TextBlock)dialog.FindName("EditorError")).Text);
+    }
+    private static void CreateShortcut(string path, string target, string arguments)
+    {
+        object? shell = null, link = null;
+        try
+        {
+            shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell") ?? throw new Exception("WScript.Shell unavailable"))!;
+            link = shell.GetType().InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, [path])!;
+            link.GetType().InvokeMember("TargetPath", BindingFlags.SetProperty, null, link, [target]);
+            link.GetType().InvokeMember("Arguments", BindingFlags.SetProperty, null, link, [arguments]);
+            link.GetType().InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
+        }
+        finally { if (link != null) Marshal.FinalReleaseComObject(link); if (shell != null) Marshal.FinalReleaseComObject(shell); }
+    }
+    private static void SelectNativeFile(IntPtr owner, string path)
+    {
+        IntPtr picker = IntPtr.Zero;
+        var deadline = Stopwatch.StartNew();
+        while (picker == IntPtr.Zero && deadline.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            EnumWindows((handle, _) => {
+                GetWindowThreadProcessId(handle, out uint pid);
+                var className = new System.Text.StringBuilder(256); GetClassName(handle, className, className.Capacity);
+                // This test has exactly one native modal file dialog. Restrict to our process;
+                // COM's file dialog can insert an intermediate owner window.
+                if (pid == Environment.ProcessId && IsWindowVisible(handle) && className.ToString() == "#32770") picker = handle;
+                return true;
+            }, IntPtr.Zero);
+            if (picker == IntPtr.Zero) Thread.Sleep(50);
+        }
+        if (picker == IntPtr.Zero) { PostMessage(owner, 0x0010, IntPtr.Zero, IntPtr.Zero); throw new Exception("Same-process native file picker not found within 10 seconds"); }
+        using var cleanup = new CancellationTokenSource();
+        var cleanupToken = cleanup.Token;
+        _ = Task.Run(async () => {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(8), cleanupToken);
+                EnumWindows((handle, _) => {
+                    GetWindowThreadProcessId(handle, out uint pid);
+                    var className = new System.Text.StringBuilder(256); GetClassName(handle, className, className.Capacity);
+                    if (pid == Environment.ProcessId && IsWindowVisible(handle) && className.ToString() == "#32770") PostMessage(handle, 0x0010, IntPtr.Zero, IntPtr.Zero);
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch (OperationCanceledException) { }
+        });
+        try
+        {
+            IntPtr filename = IntPtr.Zero, openButton = IntPtr.Zero;
+            var controls = new List<string>();
+            deadline.Restart();
+            while (filename == IntPtr.Zero && deadline.Elapsed < TimeSpan.FromSeconds(3))
+            {
+                controls.Clear();
+                EnumChildWindows(picker, (handle, _) => {
+                    var className = new System.Text.StringBuilder(256); GetClassName(handle, className, className.Capacity);
+                    int id = GetDlgCtrlID(handle);
+                    controls.Add(id + ":" + className);
+                    if (id == 1148 && className.ToString() is "ComboBox" or "Edit" or "ComboBoxEx32") filename = handle;
+                    if (id == 1 && className.ToString() == "Button") openButton = handle;
+                    return true;
+                }, IntPtr.Zero);
+                if (filename == IntPtr.Zero) Thread.Sleep(50);
+            }
+            if (filename == IntPtr.Zero) throw new Exception("Native filename control unavailable: " + string.Join(", ", controls));
+            if (SendMessageTimeout(filename, 0x000C, IntPtr.Zero, path, 2, 2000, out _) == IntPtr.Zero)
+                throw new Exception("Native filename WM_SETTEXT timed out");
+            if (openButton == IntPtr.Zero) throw new Exception("Native Open button unavailable");
+            PostMessage(openButton, 0x00F5, IntPtr.Zero, IntPtr.Zero);
+            deadline.Restart();
+            while (IsWindow(picker) && deadline.Elapsed < TimeSpan.FromSeconds(3)) Thread.Sleep(50);
+            if (IsWindow(picker)) throw new Exception("Native picker did not accept selected shortcut within 3 seconds");
+        }
+        catch { PostMessage(picker, 0x0010, IntPtr.Zero, IntPtr.Zero); throw; }
+        finally { cleanup.Cancel(); }
+    }
+    private delegate bool EnumWindowCallback(IntPtr window, IntPtr parameter);
+    private sealed class CheckSkipped(string message) : Exception(message);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumWindowCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, string lParam, uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, System.Text.StringBuilder className, int count);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint command);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct MonitorInfo
     {

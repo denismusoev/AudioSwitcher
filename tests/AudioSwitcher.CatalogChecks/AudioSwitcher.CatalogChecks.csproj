@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/AudioSwitcher/Core/LaunchModels.cs" Link="Core/LaunchModels.cs" />
+    <Compile Include="../../src/AudioSwitcher/Platform/LaunchCatalogStore.cs" Link="Platform/LaunchCatalogStore.cs" />
+    <Compile Include="../../src/AudioSwitcher/Platform/ProgramLaunchService.cs" Link="Platform/ProgramLaunchService.cs" />
+  </ItemGroup>
+</Project>

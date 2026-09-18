@@ -17,14 +17,22 @@ public partial class MainWindow : Window
     private readonly InputGate gate = new();
     private readonly DispatcherTimer padTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     private readonly DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromSeconds(3) };
-    private bool showingDisplays, busy, padArmed;
+    private NavigationState navigation => Programs.Navigation;
+    private bool showingDisplays => navigation.Section == AppSection.Displays;
+    private bool showingPrograms => navigation.Section == AppSection.Programs;
+    private bool busy, padArmed;
     private string signature = "";
     public MainWindow()
     {
         InitializeComponent();
-        SizeChanged += (_, _) => Resources["MarkerTextVisibility"] = ActualWidth < 380 ? Visibility.Collapsed : Visibility.Visible;
+        SizeChanged += (_, _) => {
+            Resources["MarkerTextVisibility"] = ActualWidth < 380 ? Visibility.Collapsed : Visibility.Visible;
+            AudioTab.FontSize = DisplayTab.FontSize = ProgramsTab.FontSize = ActualWidth < 420 ? 16 : 22;
+        };
+        Programs.StatusChanged += (text, details) => { Status.Text = text; Status.ToolTip = details; };
+        Programs.ContextChanged += () => { gate.RequireRelease(); UpdateHints(); };
         Loaded += (_, _) => { FitToWorkArea(); Refresh(); Activate(); Devices.Focus(); padTimer.Start(); refreshTimer.Start(); };
-        Closed += (_, _) => { padTimer.Stop(); refreshTimer.Stop(); };
+        Closed += (_, _) => { padTimer.Stop(); refreshTimer.Stop(); Programs.Leave(); };
         padTimer.Tick += (_, _) => PollPad();
         refreshTimer.Tick += (_, _) => { if (!busy) Refresh(quiet: true); };
     }
@@ -44,6 +52,7 @@ public partial class MainWindow : Window
     }
     private void Refresh(bool quiet = false, string? preferred = null)
     {
+        if (showingPrograms) { _ = Programs.RefreshAsync(quiet); return; }
         try
         {
             var items = showingDisplays ? display.GetDevices() : audio.GetDevices();
@@ -56,6 +65,7 @@ public partial class MainWindow : Window
             Empty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             AudioTab.Foreground = (Brush)FindResource(showingDisplays ? "MutedText" : "Text");
             DisplayTab.Foreground = (Brush)FindResource(showingDisplays ? "Text" : "MutedText");
+            ProgramsTab.Foreground = (Brush)FindResource("MutedText");
             AutomationProperties.SetName(Devices, showingDisplays ? "Мониторы" : "Устройства вывода");
             if (!quiet) { Status.Text = "Готово"; Status.ToolTip = null; }
             ScrollSelectionIntoView();
@@ -64,8 +74,30 @@ public partial class MainWindow : Window
     }
     private void SwitchTab(bool displays)
     {
-        if (busy || showingDisplays == displays) return;
-        showingDisplays = displays; Devices.ItemsSource = null; signature = ""; Refresh(); Devices.Focus();
+        SwitchSection(displays ? AppSection.Displays : AppSection.Audio);
+    }
+    private void SwitchSection(AppSection section)
+    {
+        if (busy || Programs.IsBusy || Programs.InPanel || navigation.Section == section) return;
+        Programs.Leave(); navigation.Section = section;
+        Devices.ItemsSource = null; signature = "";
+        DeviceSurface.Visibility = showingPrograms ? Visibility.Collapsed : Visibility.Visible;
+        Programs.Visibility = showingPrograms ? Visibility.Visible : Visibility.Collapsed;
+        gate.RequireRelease(); UpdateHints();
+        if (showingPrograms)
+        {
+            AudioTab.Foreground = DisplayTab.Foreground = (Brush)FindResource("MutedText");
+            ProgramsTab.Foreground = (Brush)FindResource("Text"); Programs.Enter();
+        }
+        else { Refresh(); Devices.Focus(); }
+    }
+    private void UpdateHints()
+    {
+        string label = showingPrograms ? Programs.ActionHint : "Применить";
+        ApplyHint.Text = $" / Enter · {label}";
+        AutomationProperties.SetName(ApplyHint, $"A / Enter · {label}");
+        BackHint.Text = showingPrograms && Programs.InPanel ? " / Esc · Назад" : " / Esc · Закрыть";
+        ListHint.Visibility = showingPrograms && !Programs.InPanel ? Visibility.Visible : Visibility.Collapsed;
     }
     private async Task ApplySelected()
     {
@@ -104,15 +136,18 @@ public partial class MainWindow : Window
     }
     private void Execute(PadAction action)
     {
-        if (action == PadAction.Close) { Close(); return; }
-        if (busy) return;
+        if (action == PadAction.Close) { if (!showingPrograms || !Programs.Back()) Close(); return; }
+        if (busy || Programs.IsBusy) return;
         switch (action)
         {
-            case PadAction.Left: SwitchTab(false); break;
-            case PadAction.Right: SwitchTab(true); break;
-            case PadAction.Up: Move(-1); break;
-            case PadAction.Down: Move(1); break;
-            case PadAction.Confirm: _ = ApplySelected(); break;
+            case PadAction.Left:
+            case PadAction.PreviousSection: SwitchSection((AppSection)Math.Max(0, (int)navigation.Section - 1)); break;
+            case PadAction.Right:
+            case PadAction.NextSection: SwitchSection((AppSection)Math.Min(2, (int)navigation.Section + 1)); break;
+            case PadAction.ToggleList: if (showingPrograms) Programs.SelectMode(!navigation.LaunchList); break;
+            case PadAction.Up: if (showingPrograms) Programs.Move(-1); else Move(-1); break;
+            case PadAction.Down: if (showingPrograms) Programs.Move(1); else Move(1); break;
+            case PadAction.Confirm: if (showingPrograms) _ = Programs.ConfirmAsync(); else _ = ApplySelected(); break;
         }
     }
     private void Move(int direction)
@@ -133,11 +168,11 @@ public partial class MainWindow : Window
     }
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { Close(); e.Handled = true; return; }
+        if (e.Key == Key.Escape) { if (!e.IsRepeat) Execute(PadAction.Close); e.Handled = true; return; }
         if (e.Key == Key.Enter && Keyboard.FocusedElement is ButtonBase) return;
         if (e.Key == Key.F5 && !busy) { Refresh(); e.Handled = true; return; }
-        var action = e.Key switch { Key.Up => PadAction.Up, Key.Down => PadAction.Down, Key.Left => PadAction.Left, Key.Right => PadAction.Right, Key.Enter => PadAction.Confirm, _ => PadAction.None };
-        if (action == PadAction.None || (e.IsRepeat && action == PadAction.Confirm)) return;
+        var action = e.Key switch { Key.Up => PadAction.Up, Key.Down => PadAction.Down, Key.Left => PadAction.Left, Key.Right => PadAction.Right, Key.Enter => PadAction.Confirm, Key.X => PadAction.ToggleList, _ => PadAction.None };
+        if (action == PadAction.None || (e.IsRepeat && action is PadAction.Confirm or PadAction.ToggleList)) return;
         Execute(action); e.Handled = true;
     }
     private void DragWindow(object sender, MouseButtonEventArgs e)
@@ -149,5 +184,6 @@ public partial class MainWindow : Window
     }
     private void AudioClick(object sender, RoutedEventArgs e) => SwitchTab(false);
     private void DisplayClick(object sender, RoutedEventArgs e) => SwitchTab(true);
+    private void ProgramsClick(object sender, RoutedEventArgs e) => SwitchSection(AppSection.Programs);
     private async void ApplyDoubleClick(object sender, MouseButtonEventArgs e) { if (ItemsControl.ContainerFromElement(Devices, e.OriginalSource as DependencyObject) is ListBoxItem) await ApplySelected(); }
 }
