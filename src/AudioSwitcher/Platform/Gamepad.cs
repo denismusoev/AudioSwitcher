@@ -15,6 +15,7 @@ public static class Gamepad
             action = (s.Buttons & 0x2000) != 0 ? PadAction.Close
                 : (s.Buttons & 0x1000) != 0 ? PadAction.Confirm
                 : (s.Buttons & 0x4000) != 0 ? PadAction.ToggleList
+                : (s.Buttons & 0x8000) != 0 ? PadAction.Details
                 : (s.Buttons & 0x0100) != 0 ? PadAction.PreviousSection
                 : (s.Buttons & 0x0200) != 0 ? PadAction.NextSection
                 : (s.Buttons & 0x0004) != 0 || s.LeftX < -16000 ? PadAction.Left

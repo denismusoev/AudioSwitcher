@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -19,6 +19,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--fixed-design")) return FixedDesignChecks.Run();
         int passed = 0, failed = 0, skipped = 0;
         var app = new App(); app.InitializeComponent();
         var window = new MainWindow(); window.Show();
@@ -53,6 +54,217 @@ internal static class Program
                 }
                 var originalSource = devices.ItemsSource;
                 var originalSelection = devices.SelectedItem;
+                await Check("Short device cards remain compact at minimum window size", async () => {
+                    try
+                    {
+                        window.Width = 340; window.Height = 400;
+                        foreach (bool display in new[] { false, true })
+                        {
+                            devices.ItemsSource = Enumerable.Range(0, 5).Select(i => new DeviceOption($"density-{i}", display ? $"Экран {i + 1}" : "Динамики", "Короткая подпись", i == 0, display)).ToArray();
+                            devices.SelectedIndex = 0;
+                            await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                            Child<ScrollViewer>(devices)!.ScrollToHome();
+                            await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                            var row = (ListBoxItem)devices.ItemContainerGenerator.ContainerFromIndex(0);
+                            if (row.ActualHeight > 82) throw new Exception($"Short card stretched to {row.ActualHeight:F1} DIPs");
+                            if (args.Contains("--capture-programs")) Capture((FrameworkElement)window.FindName("WindowFrame"), display ? "ui-density-displays-340.png" : "ui-density-audio-340.png");
+                        }
+                    }
+                    finally { devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection; }
+                });
+                await Check("Program list starts at the same position as device list and shows only essential text", async () => {
+                    var switchSection = typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var programs = (ProgramsView)window.FindName("Programs");
+                    try
+                    {
+                        window.Width = 480; window.Height = 550;
+                        switchSection.Invoke(window, [AppSection.Audio]); window.UpdateLayout();
+                        var deviceOrigin = devices.TranslatePoint(new Point(), window);
+                        switchSection.Invoke(window, [AppSection.Programs]); programs.SelectMode(false);
+                        var list = (ListBox)programs.FindName("RunningList");
+                        var identity = new ProcessIdentity(27, 37);
+                        var fixture = new RunningProgram(identity, "Редактор", new[] { new WindowTarget(identity, 321, "Секретный документ", "Экран 2", false) });
+                        list.ItemsSource = new[] { fixture, fixture with { Name = "Браузер" }, fixture with { Name = "Проводник" } }; list.SelectedIndex = 0;
+                        ((TextBlock)programs.FindName("EmptyPrograms")).Visibility = Visibility.Collapsed;
+                        typeof(MainWindow).GetMethod("SetStatus", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, ["Готово", null]);
+                        await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                        var origin = list.TranslatePoint(new Point(), window);
+                        if (Math.Abs(origin.X - deviceOrigin.X) > 0.5 || Math.Abs(origin.Y - deviceOrigin.Y) > 0.5)
+                            throw new Exception($"Program list starts at {origin}, devices at {deviceOrigin}");
+                        var row = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0);
+                        if (Descendants<TextBlock>(row).Any(t => t.IsVisible && t.Text == fixture.DisplayDetails))
+                            throw new Exception("Normal running row still exposes full technical details");
+                        if (args.Contains("--capture-programs")) Capture((FrameworkElement)window.FindName("WindowFrame"), "ui-density-programs-480.png");
+                    }
+                    finally { switchSection.Invoke(window, [AppSection.Audio]); devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection; }
+                });
+                await Check("Compact audio picker shows two complete short rows", async () => {
+                    window.Width = 340; window.Height = 400;
+                    devices.ItemsSource = Enumerable.Range(0, 5).Select(i => new DeviceOption($"compact-{i}", $"Устройство {i}", "Короткая подпись", i == 0)).ToArray();
+                    devices.SelectedIndex = 0;
+                    await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                    var scroll = Child<ScrollViewer>(devices)!;
+                    var row = (ListBoxItem)devices.ItemContainerGenerator.ContainerFromIndex(1);
+                    var presenter = Child<ScrollContentPresenter>(scroll)!;
+                    if (row.TranslatePoint(new Point(0, row.ActualHeight), presenter).Y > presenter.ActualHeight + 0.5)
+                        throw new Exception("Second short device row is clipped in compact mode");
+                    devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection;
+                });
+                await Check("Program actions replace background list without backdrop", async () => {
+                    typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [AppSection.Programs]);
+                    var programs = (ProgramsView)window.FindName("Programs");
+                    await programs.RefreshAsync();
+                    var list = (ListBox)programs.FindName("RunningList");
+                    var identity = new ProcessIdentity(12345, 42);
+                    list.ItemsSource = new[] { new RunningProgram(identity, "Тестовая программа", new[] { new WindowTarget(identity, 123, "Документ А", "Экран 1", false) }) };
+                    list.SelectedIndex = 0;
+                    await programs.ConfirmAsync(); window.UpdateLayout();
+                    try {
+                    if (((Grid)programs.FindName("ListsSurface")).Visibility != Visibility.Collapsed)
+                        throw new Exception("Old list remains visible behind actions");
+                    if (((Grid)programs.FindName("PanelSurface")).Background != null)
+                        throw new Exception("Actions still use a dark backdrop");
+                    if (args.Contains("--capture-programs"))
+                    {
+                        foreach (var size in new[] { (480, 550), (340, 400) })
+                        {
+                            window.Width = size.Item1; window.Height = size.Item2;
+                            await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                            Capture((FrameworkElement)window.FindName("WindowFrame"), $"ui-redesign-actions-{size.Item1}.png");
+                        }
+                        var choices = (ListBox)programs.FindName("ProgramActions");
+                        choices.SelectedIndex = 1; await programs.ConfirmAsync();
+                        await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                        Capture((FrameworkElement)window.FindName("WindowFrame"), "ui-redesign-confirm-340.png");
+                        programs.Back();
+                    }
+                    } finally { programs.Back();
+                    typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [AppSection.Audio]);
+                    devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection; }
+                });
+                await Check("Catalog editor is an embedded screen", () => {
+                    if (!typeof(UserControl).IsAssignableFrom(typeof(LaunchEntryDialog))) throw new Exception("Editor still opens another top-level window");
+                    return Task.CompletedTask;
+                });
+                await Check("Section automation exposes selection separately from focus", () => {
+                    var tab = (SectionButton)window.FindName("AudioTab");
+                    var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(tab)!;
+                    var selection = (System.Windows.Automation.Provider.ISelectionItemProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.SelectionItem)!;
+                    if (!selection.IsSelected || peer.GetAutomationControlType() != System.Windows.Automation.Peers.AutomationControlType.TabItem)
+                        throw new Exception("Selected section is not exposed as a selected tab");
+                    return Task.CompletedTask;
+                });
+                await Check("Selected device details use the selected system foreground", async () => {
+                    object original = app.Resources["SelectedText"];
+                    try
+                    {
+                        app.Resources["SelectedText"] = Brushes.Yellow;
+                        devices.ItemsSource = new[] { new DeviceOption("contrast-fixture", "Устройство", "Подпись", true) };
+                        devices.SelectedIndex = 0;
+                        await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                        var row = (ListBoxItem)devices.ItemContainerGenerator.ContainerFromIndex(0);
+                        var details = Descendants<TextBlock>(row).Single(t => t.Text == "Подпись");
+                        if (details.Foreground != Brushes.Yellow) throw new Exception("Secondary text ignores selected foreground and can fail contrast themes");
+                    }
+                    finally { app.Resources["SelectedText"] = original; devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection; }
+                });
+                await Check("Enlarged text wraps section navigation within window", async () => {
+                    var saved = new Dictionary<string, object>();
+                    try
+                    {
+                        window.Width = 340; window.Height = 800;
+                        foreach (int size in new[] { 12, 13, 14, 15, 16, 18, 22, 24 })
+                        { string key = $"Font{size}"; saved[key] = app.Resources[key]; app.Resources[key] = size * 2.0; }
+                        saved["BadgeSize"] = app.Resources["BadgeSize"]; app.Resources["BadgeSize"] = 36.0;
+                        typeof(MainWindow).GetMethod("UpdateAppearance", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+                        await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                        var frame = (FrameworkElement)window.FindName("WindowFrame");
+                        foreach (string name in new[] { "AudioTab", "DisplayTab", "ProgramsTab" })
+                        {
+                            var tab = (Button)window.FindName(name);
+                            if (tab.TranslatePoint(new Point(tab.ActualWidth, 0), frame).X > frame.ActualWidth - 8)
+                                throw new Exception($"Enlarged tab overflows: {name}");
+                        }
+                        var selectedRow = (ListBoxItem)devices.ItemContainerGenerator.ContainerFromIndex(devices.SelectedIndex);
+                        var deviceName = Descendants<TextBlock>(selectedRow).First(t => t.Text == ((DeviceOption)devices.SelectedItem).DisplayName);
+                        if (deviceName.ActualWidth < 240)
+                            throw new Exception("Active marker takes width away from enlarged device name");
+                        if (args.Contains("--capture-programs")) Capture(frame, "ui-redesign-large-text.png");
+                    }
+                    finally
+                    {
+                        foreach (var pair in saved) app.Resources[pair.Key] = pair.Value;
+                        window.Width = 480; window.Height = 550;
+                        typeof(MainWindow).GetMethod("UpdateAppearance", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+                    }
+                });
+                await Check("Process details identify its window before termination", () => {
+                    var identity = new ProcessIdentity(17, 23);
+                    var program = new RunningProgram(identity, "Редактор", new[] { new WindowTarget(identity, 123, "Документ А", "Экран 1", false) });
+                    if (!program.DisplayDetails.Contains("Документ А")) throw new Exception("Distinctive window title missing from process details");
+                    return Task.CompletedTask;
+                });
+                await Check("Error details open and scroll with controller commands without changing devices", async () => {
+                    var setStatus = typeof(MainWindow).GetMethod("SetStatus", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var execute = typeof(MainWindow).GetMethod("Execute", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    string details = string.Join("\n", Enumerable.Repeat("Ошибка подключения. Проверьте доступность устройства.", 40));
+                    setStatus.Invoke(window, ["Ошибка", details]);
+                    execute.Invoke(window, [PadAction.Details]);
+                    await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                    if (((TextBlock)window.FindName("FullError")).Text != details || ((Grid)window.FindName("DeviceSurface")).IsVisible)
+                        throw new Exception("Details screen did not replace the picker or lost text");
+                    execute.Invoke(window, [PadAction.Down]);
+                    await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                    if (((ScrollViewer)window.FindName("ErrorScroll")).VerticalOffset <= 0) throw new Exception("Controller cannot scroll long error details");
+                    execute.Invoke(window, [PadAction.Close]);
+                    if (((Grid)window.FindName("DetailsSurface")).IsVisible || !((Grid)window.FindName("DeviceSurface")).IsVisible) throw new Exception("Back did not restore picker");
+                    setStatus.Invoke(window, ["Готово", null]);
+                });
+                await Check("Editor Back command restores actions without a second window", async () => {
+                    var switchSection = typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var programs = (ProgramsView)window.FindName("Programs");
+                    switchSection.Invoke(window, [AppSection.Programs]); programs.SelectMode(true);
+                    int windowCount = app.Windows.Count;
+                    typeof(ProgramsView).GetMethod("AddClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(programs, [programs, new RoutedEventArgs()]);
+                    await Dispatcher.Yield(DispatcherPriority.ContextIdle); window.UpdateLayout();
+                    if (!programs.Editing || app.Windows.Count != windowCount || programs.Editor?.IsVisible != true) throw new Exception("Editor is not embedded");
+                    foreach (var key in new[] { Key.Left, Key.Right, Key.X })
+                    {
+                        var input = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), Environment.TickCount, key);
+                        typeof(MainWindow).GetMethod("OnKeyDown", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)!.Invoke(window, [window, input]);
+                        if (input.Handled) throw new Exception($"Global navigation consumed editor text key {key}");
+                    }
+                    programs.Move(1);
+                    if (programs.Editor?.IsKeyboardFocusWithin != true) throw new Exception("Controller navigation left the editor");
+                    var firstFocus = Keyboard.FocusedElement;
+                    programs.Move(1);
+                    if (Keyboard.FocusedElement == firstFocus) throw new Exception("Repeated controller Down restarts traversal instead of advancing");
+                    programs.Move(-1);
+                    if (Keyboard.FocusedElement != firstFocus) throw new Exception("Controller Up does not reverse traversal");
+                    if (args.Contains("--capture-programs")) Capture((FrameworkElement)window.FindName("WindowFrame"), "ui-redesign-editor-340.png");
+                    typeof(MainWindow).GetMethod("Execute", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [PadAction.Close]);
+                    if (programs.Editing || !((Grid)programs.FindName("ListsSurface")).IsVisible) throw new Exception("Controller Back did not restore catalog");
+                    programs.SelectMode(false); switchSection.Invoke(window, [AppSection.Audio]);
+                    devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection;
+                });
+                await Check("Catalog error does not steal controller list toggle", async () => {
+                    var switchSection = typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var programs = (ProgramsView)window.FindName("Programs");
+                    switchSection.Invoke(window, [AppSection.Programs]); programs.SelectMode(false);
+                    typeof(MainWindow).GetMethod("SetStatus", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, ["Ошибка каталога", "Подробности"]);
+                    try
+                    {
+                        typeof(MainWindow).GetMethod("Execute", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [PadAction.ToggleList]);
+                        if (!programs.Navigation.LaunchList || ((Grid)window.FindName("DetailsSurface")).IsVisible) throw new Exception("Error steals X instead of changing program list");
+                    }
+                    finally
+                    {
+                        typeof(MainWindow).GetMethod("CloseDetails", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+                        programs.SelectMode(false); switchSection.Invoke(window, [AppSection.Audio]);
+                        devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection;
+                    }
+                    await Task.CompletedTask;
+                });
                 var move = typeof(MainWindow).GetMethod("Move", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 await Check("No upper gap at end of seven-row list from user screenshots", async () => {
                     try
@@ -238,10 +450,11 @@ internal static class Program
                     finally { programs.Back(); programs.Back(); switchSection.Invoke(window, [AppSection.Audio]); }
                 });
                 await Check("Editor fields have associated labels and retain visible keyboard focus", async () => {
-                    var editor = new LaunchEntryDialog(null, _ => Task.CompletedTask) { Owner = window };
+                    var editor = new LaunchEntryDialog(null, _ => Task.CompletedTask);
+                    var editorWindow = new Window { Owner = window, Content = editor, Width = 460, Height = 530 };
                     try
                     {
-                        editor.Show(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                        editorWindow.Show(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
                         foreach (var name in new[] { "EntryName", "EntryTarget", "EntryArguments", "EntryDirectory" })
                         {
                             var input = (TextBox)editor.FindName(name);
@@ -251,7 +464,7 @@ internal static class Program
                             if (!input.IsKeyboardFocused || input.BorderBrush != app.FindResource("Accent")) throw new Exception($"Missing focus indicator: {name}");
                         }
                     }
-                    finally { editor.Close(); }
+                    finally { editorWindow.Close(); }
                 });
                 await Check("Single click opens catalog modal actions; repeated edits use latest saved values", async () => {
                     var directory = Path.Combine(Path.GetTempPath(), "AudioSwitcher-EditorChecks-" + Guid.NewGuid());
@@ -260,8 +473,7 @@ internal static class Program
                     var original = new LaunchEntry(Guid.NewGuid(), "Original fixture", LaunchKind.Executable, Environment.ProcessPath!, "--original", directory);
                     store.Save(new(1, [original]));
                     var view = new ProgramsView(store);
-                    var modalHost = new ContentControl { Visibility = Visibility.Collapsed, HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
-                    var hostContent = new Grid(); hostContent.Children.Add(view); hostContent.Children.Add(modalHost); view.SetModalHost(modalHost);
+                    var hostContent = new Grid { Background = (Brush)app.FindResource("WindowSurface") }; hostContent.Children.Add(view);
                     var host = new Window { Content = hostContent, Width = 480, Height = 550, Owner = window, Background = (Brush)app.FindResource("WindowSurface"), Foreground = (Brush)app.FindResource("Text") };
                     try
                     {
@@ -277,7 +489,7 @@ internal static class Program
                         var menu = (ListBox)view.FindName("ProgramActions");
                         if (view.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Record must open actions instead of launching immediately");
                         var labels = menu.Items.Cast<object>().Select(item => (string)item.GetType().GetProperty("DisplayName")!.GetValue(item)!).ToArray();
-                        if (!labels.Take(3).SequenceEqual(new[] { "Запустить", "Удалить", "Редактировать" })) throw new Exception("Record actions missing");
+                        if (!labels.Take(3).SequenceEqual(new[] { "Запустить", "Редактировать", "Удалить запись" })) throw new Exception("Record actions missing");
                         if (view.FindName("ConfigureProgram") != null) throw new Exception("Separate configure button must be removed");
                         host.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
                         if (((Grid)view.FindName("ListsSurface")).IsHitTestVisible || !((Grid)view.FindName("PanelSurface")).IsVisible) throw new Exception("Actions must block the underlying list");
@@ -308,7 +520,7 @@ internal static class Program
                         if (launchStatus != "Файл программы или ярлыка не найден." || ((TextBlock)view.FindName("PanelFeedback")).Text != launchStatus || ((TextBlock)view.FindName("PanelDescription")).Text != "Выберите действие" || view.Navigation.Panel != ProgramPanel.Actions || ((Grid)view.FindName("ListsSurface")).IsEnabled)
                             throw new Exception("Launch action did not validate its target or released modal blocking");
                         // The actual test EXE is used only for editor validation, never launched here.
-                        menu.SelectedIndex = 2;
+                        menu.SelectedIndex = 1;
                         var firstDrive = DriveEditor(host.Dispatcher, dialog => {
                             ((TextBox)dialog.FindName("EntryName")).Text = "Saved fixture 世界";
                             ((TextBox)dialog.FindName("EntryArguments")).Text = "--saved \"two words\"";
@@ -324,13 +536,13 @@ internal static class Program
                                 throw new Exception("Reopened editor contains stale values from original catalog entry");
                             dialog.Close();
                         });
-                        menu.SelectedIndex = 2;
+                        menu.SelectedIndex = 1;
                         await view.ConfirmAsync(); await secondDrive;
-                        menu.SelectedIndex = 1; await view.ConfirmAsync();
+                        menu.SelectedIndex = 2; await view.ConfirmAsync();
                         if (view.Navigation.Panel != ProgramPanel.ConfirmDelete || menu.SelectedIndex != 0) throw new Exception("Deletion must require confirmation defaulting to Cancel");
                         await view.ConfirmAsync();
                         if (store.Load().Catalog.Entries.Count != 1 || view.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Cancel deleted the record");
-                        menu.SelectedIndex = 1; await view.ConfirmAsync(); menu.SelectedIndex = 1; await view.ConfirmAsync();
+                        menu.SelectedIndex = 2; await view.ConfirmAsync(); menu.SelectedIndex = 1; await view.ConfirmAsync();
                         if (store.Load().Catalog.Entries.Count != 0 || view.Navigation.Panel != ProgramPanel.List || !((Grid)view.FindName("ListsSurface")).IsEnabled) throw new Exception("Confirmed deletion failed or list remained blocked");
                     }
                     finally { view.Leave(); host.Close(); Directory.Delete(directory, true); }
@@ -389,12 +601,13 @@ internal static class Program
                     CreateShortcut(shortcut, Environment.ProcessPath!, "--picker-fixture-never-launched");
                     var store = new LaunchCatalogStore(Path.Combine(directory, "programs.json"));
                     LaunchEntry? saved = null;
-                    var dialog = new LaunchEntryDialog(null, entry => { store.Save(new(1, [entry])); saved = entry; return Task.CompletedTask; }) { Owner = window };
+                    var dialog = new LaunchEntryDialog(null, entry => { store.Save(new(1, [entry])); saved = entry; return Task.CompletedTask; });
+                    var dialogWindow = new Window { Owner = window, Content = dialog, Width = 460, Height = 530 };
                     var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                     dialog.Loaded += (_, _) => dialog.Dispatcher.BeginInvoke(new Action(async () => {
                         try
                         {
-                            var owner = new WindowInteropHelper(dialog).Handle;
+                            var owner = new WindowInteropHelper(dialogWindow).Handle;
                             var selection = Task.Run(() => SelectNativeFile(owner, shortcut));
                             typeof(LaunchEntryDialog).GetMethod("BrowseClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dialog, [dialog, new RoutedEventArgs()]);
                             await selection;
@@ -409,11 +622,11 @@ internal static class Program
                     }));
                     try
                     {
-                        dialog.ShowDialog(); await completion.Task;
+                        dialogWindow.Show(); await completion.Task;
                         var persisted = store.Load().Catalog.Entries.Single();
                         if (saved?.Kind != LaunchKind.Shortcut || persisted.Kind != LaunchKind.Shortcut || persisted.Target != shortcut) throw new Exception("Saved catalog lost selected shortcut kind or path");
                     }
-                    finally { if (dialog.IsVisible) dialog.Close(); Directory.Delete(directory, true); }
+                    finally { dialogWindow.Close(); Directory.Delete(directory, true); }
                 });
                 if (args.Contains("--switch-and-restore"))
                 {
@@ -453,6 +666,23 @@ internal static class Program
         Dispatcher.Run();
         return failed == 0 ? 0 : 1;
     }
+    private static IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match) yield return match;
+            foreach (var nested in Descendants<T>(child)) yield return nested;
+        }
+    }
+    private static void Capture(FrameworkElement view, string name)
+    {
+        string directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts"));
+        Directory.CreateDirectory(directory);
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(view.ActualWidth), (int)Math.Ceiling(view.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(view); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var output = File.Create(Path.Combine(directory, name)); encoder.Save(output);
+    }
     private static T? Child<T>(DependencyObject parent) where T : DependencyObject
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -470,7 +700,7 @@ internal static class Program
             LaunchEntryDialog? dialog = null;
             try
             {
-                dialog = Application.Current.Windows.OfType<LaunchEntryDialog>().Single(w => w.IsVisible);
+                dialog = Application.Current.Windows.Cast<Window>().Select(w => Child<LaunchEntryDialog>(w)).Single(w => w?.IsVisible == true)!;
                 action(dialog); await WaitForEditorClose(dialog); completion.SetResult();
             }
             catch (Exception ex) { dialog?.Close(); completion.TrySetException(ex); }

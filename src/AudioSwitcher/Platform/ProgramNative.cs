@@ -29,6 +29,7 @@ internal static class ProgramNative
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool EnumWindows(WindowCallback callback, nint parameter);
     [DllImport("user32.dll")] internal static extern bool IsWindowVisible(nint window);
     [DllImport("user32.dll")] internal static extern bool IsWindow(nint window);
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)] internal static extern bool PostMessage(nint window, uint message, nint wParam, nint lParam);
     [DllImport("user32.dll")] internal static extern bool IsHungAppWindow(nint window);
     [DllImport("user32.dll")] internal static extern nint GetWindow(nint window, uint command);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] internal static extern int GetWindowLong(nint window, int index);
@@ -50,6 +51,7 @@ internal static class ProgramNative
     [DllImport("user32.dll")] internal static extern bool IsZoomed(nint window);
     [DllImport("user32.dll")] internal static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(nint window);
+    [DllImport("user32.dll")] internal static extern bool ShowWindowAsync(nint window, int command);
     [DllImport("kernel32.dll", SetLastError = true)] internal static extern SafeProcessHandle OpenProcess(uint access, bool inherit, int process);
     [DllImport("kernel32.dll", SetLastError = true)] internal static extern bool GetProcessTimes(SafeProcessHandle process, out long created, out long exited, out long kernel, out long user);
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] internal static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, StringBuilder name, ref int size);

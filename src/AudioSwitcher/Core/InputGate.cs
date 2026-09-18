@@ -1,5 +1,5 @@
 namespace AudioSwitcher.Core;
-public enum PadAction { None, Up, Down, Left, Right, Confirm, Close, PreviousSection, NextSection, ToggleList }
+public enum PadAction { None, Up, Down, Left, Right, Confirm, Close, PreviousSection, NextSection, ToggleList, Details }
 public sealed class InputGate
 {
     private PadAction previous;
@@ -15,7 +15,7 @@ public sealed class InputGate
         }
         if (action == PadAction.None) { previous = action; return false; }
         if (action != previous) { previous = action; nextRepeat = milliseconds + 400; return true; }
-        if (action is PadAction.Confirm or PadAction.Close or PadAction.ToggleList || milliseconds < nextRepeat) return false;
+        if (action is PadAction.Confirm or PadAction.Close or PadAction.ToggleList or PadAction.Details || milliseconds < nextRepeat) return false;
         nextRepeat = milliseconds + 140;
         return true;
     }

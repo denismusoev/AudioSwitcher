@@ -1,4 +1,4 @@
-param([string]$ExePath = "$PSScriptRoot/../src/AudioSwitcher/bin/Release/net10.0-windows/AudioSwitcher.exe", [switch]$ScrollComparison)
+﻿param([string]$ExePath = "$PSScriptRoot/../src/AudioSwitcher/bin/Release/net10.0-windows/AudioSwitcher.exe", [switch]$ScrollComparison)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
 Add-Type @'
@@ -109,7 +109,7 @@ try {
         if ($defaultChoice.Current.Name -ne 'Отмена') { throw 'Termination must default to Cancel' }
         Save-ProgramImage 'ui-programs-confirm.png'
         Send-SmokeKey 13
-        if ((Find-Control 'PanelDescription').Current.Name -ne 'Выберите действие') { throw 'Default confirmation did not cancel' }
+        if ((Find-Control 'PanelTitle').Current.Name.StartsWith('Завершить ')) { throw 'Default confirmation did not cancel' }
         Send-SmokeKey 27
         Find-Control 'RunningList' | Out-Null
         if ($app.HasExited) { throw 'Esc must return from actions before closing app' }

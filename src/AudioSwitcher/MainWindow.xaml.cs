@@ -21,35 +21,57 @@ public partial class MainWindow : Window
     private bool showingDisplays => navigation.Section == AppSection.Displays;
     private bool showingPrograms => navigation.Section == AppSection.Programs;
     private bool busy, padArmed;
+    private Point pointerStart;
+    private bool dragAllowed, dragged;
+    private readonly InterfaceSettings interfaceSettings;
+    private string? errorDetails;
+    private bool detailsOpen;
     private string signature = "";
     public MainWindow()
     {
         InitializeComponent();
-        Programs.SetModalHost(ProgramModalHost);
-        SizeChanged += (_, _) => {
-            Resources["MarkerTextVisibility"] = ActualWidth < 380 ? Visibility.Collapsed : Visibility.Visible;
-            AudioTab.FontSize = DisplayTab.FontSize = ProgramsTab.FontSize = ActualWidth < 420 ? 16 : 22;
-        };
-        Programs.StatusChanged += (text, details) => { Status.Text = text; Status.ToolTip = details; };
+        interfaceSettings = new InterfaceSettings(Application.Current, UpdateAppearance);
+        SizeChanged += (_, _) => UpdateAppearance();
+        Programs.StatusChanged += SetStatus;
         Programs.ContextChanged += () => { gate.RequireRelease(); UpdateHints(); };
         Loaded += (_, _) => { FitToWorkArea(); Refresh(); UpdateHints(); Activate(); Devices.Focus(); padTimer.Start(); refreshTimer.Start(); };
-        Closed += (_, _) => { padTimer.Stop(); refreshTimer.Stop(); Programs.Leave(); };
+        Closed += (_, _) => { padTimer.Stop(); refreshTimer.Stop(); Programs.Leave(); interfaceSettings.Dispose(); };
         padTimer.Tick += (_, _) => PollPad();
         refreshTimer.Tick += (_, _) => { if (!busy) Refresh(quiet: true); };
     }
+    private void UpdateAppearance()
+    {
+        AudioTab.FontSize = DisplayTab.FontSize = ProgramsTab.FontSize = 28;
+        WindowFrame.Padding = new Thickness(36, 28, 36, 24);
+        UpdateHints();
+    }
+    private void SetStatus(string text, string? details = null)
+    {
+        Status.Text = text; Status.ToolTip = null; errorDetails = details;
+        Status.SetResourceReference(TextBlock.ForegroundProperty, details == null ? "Text" : "ErrorText");
+        UpdateHints();
+    }
+    private void OpenDetails(string? panelDetails = null)
+    {
+        if ((panelDetails == null && (errorDetails == null || Programs.InPanel)) || busy || Programs.IsBusy) return;
+        detailsOpen = true; FullError.Text = panelDetails ?? errorDetails;
+        DeviceSurface.Visibility = Programs.Visibility = Visibility.Collapsed;
+        DetailsSurface.Visibility = Visibility.Visible; ErrorScroll.ScrollToTop(); ErrorScroll.Focus(); UpdateHints();
+    }
+    private bool CloseDetails()
+    {
+        if (!detailsOpen) return false;
+        detailsOpen = false; DetailsSurface.Visibility = Visibility.Collapsed;
+        DeviceSurface.Visibility = showingPrograms ? Visibility.Collapsed : Visibility.Visible;
+        Programs.Visibility = showingPrograms ? Visibility.Visible : Visibility.Collapsed;
+        if (!showingPrograms) Devices.Focus(); else Programs.RestoreFocus();
+        UpdateHints(); return true;
+    }
     private void FitToWorkArea()
     {
-        var handle = new WindowInteropHelper(this).Handle;
-        // Move first so GetDpiForWindow uses the target monitor's current scaling.
-        WindowPlacement.Center(handle);
-        var area = WindowPlacement.PrimaryWorkArea();
-        double scale = WindowPlacement.Scale(handle);
-        MinWidth = Math.Min(340, area.Width / scale);
-        MinHeight = Math.Min(400, area.Height / scale);
-        Width = Math.Min(Width, area.Width / scale);
-        Height = Math.Min(Height, area.Height / scale);
-        UpdateLayout();
-        WindowPlacement.Center(handle);
+        Width = 640; Height = 700;
+        WindowState = WindowState.Normal;
+        WindowPlacement.Center(new WindowInteropHelper(this).Handle);
     }
     private void Refresh(bool quiet = false, string? preferred = null)
     {
@@ -68,10 +90,10 @@ public partial class MainWindow : Window
             DisplayTab.Foreground = (Brush)FindResource(showingDisplays ? "Text" : "MutedText");
             ProgramsTab.Foreground = (Brush)FindResource("MutedText");
             AutomationProperties.SetName(Devices, showingDisplays ? "Мониторы" : "Устройства вывода");
-            if (!quiet) { Status.Text = "Готово"; Status.ToolTip = null; }
+            if (!quiet) SetStatus("Готово");
             ScrollSelectionIntoView();
         }
-        catch (Exception ex) { Status.Text = $"Не удалось загрузить устройства: {ex.Message}"; }
+        catch (Exception ex) { SetStatus("Не удалось загрузить устройства", ex.Message); }
     }
     private void SwitchTab(bool displays)
     {
@@ -79,7 +101,7 @@ public partial class MainWindow : Window
     }
     private void SwitchSection(AppSection section)
     {
-        if (busy || Programs.IsBusy || Programs.InPanel || navigation.Section == section) return;
+        if (busy || Programs.IsBusy || Programs.InPanel || detailsOpen || navigation.Section == section) return;
         Programs.Leave(); navigation.Section = section;
         Devices.ItemsSource = null; signature = "";
         DeviceSurface.Visibility = showingPrograms ? Visibility.Collapsed : Visibility.Visible;
@@ -94,19 +116,18 @@ public partial class MainWindow : Window
     }
     private void UpdateHints()
     {
-        string label = busy ? "Подождите" : showingPrograms ? Programs.ActionHint : "Применить";
-        ApplyHint.Text = $" / Enter · {label}";
-        AutomationProperties.SetName(ApplyHint, $"A / Enter · {label}");
-        BackHint.Text = showingPrograms && Programs.InPanel ? " / Esc · Назад" : " / Esc · Закрыть";
-        bool available = !busy && !Programs.IsBusy && !Programs.InPanel;
+        bool available = !busy && !Programs.IsBusy && !Programs.InPanel && !detailsOpen;
         AudioTab.IsEnabled = DisplayTab.IsEnabled = ProgramsTab.IsEnabled = available;
-        SectionHint.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
-        StatusSurface.Visibility = showingPrograms && Programs.InPanel ? Visibility.Collapsed : Visibility.Visible;
-        BackShortcut.Visibility = SelectionHint.Visibility = busy || Programs.IsBusy ? Visibility.Collapsed : Visibility.Visible;
-        ListHint.Visibility = showingPrograms && available ? Visibility.Visible : Visibility.Collapsed;
-        AudioTab.FontWeight = navigation.Section == AppSection.Audio ? FontWeights.SemiBold : FontWeights.Normal;
-        DisplayTab.FontWeight = navigation.Section == AppSection.Displays ? FontWeights.SemiBold : FontWeights.Normal;
-        ProgramsTab.FontWeight = showingPrograms ? FontWeights.SemiBold : FontWeights.Normal;
+        StatusSurface.Visibility = Visibility.Visible;
+        CatalogCommand.Visibility = showingPrograms && navigation.LaunchList && !Programs.InPanel ? Visibility.Visible : Visibility.Collapsed;
+        SaveCommand.Visibility = Programs.Editing ? Visibility.Visible : Visibility.Collapsed;
+        CatalogCommand.IsEnabled = SaveCommand.IsEnabled = !busy && !Programs.IsBusy;
+        BackCommand.Content = detailsOpen || Programs.InPanel ? "Назад" : "Закрыть";
+        foreach (var (tab, selected) in new[] { (AudioTab, navigation.Section == AppSection.Audio), (DisplayTab, navigation.Section == AppSection.Displays), (ProgramsTab, showingPrograms) })
+        {
+            tab.SetResourceReference(Control.ForegroundProperty, selected ? "Text" : "MutedText");
+            tab.IsSelected = selected;
+        }
     }
     private async Task ApplySelected()
     {
@@ -114,8 +135,7 @@ public partial class MainWindow : Window
         busy = true;
         UpdateHints();
         bool changeDisplay = showingDisplays;
-        Status.Text = changeDisplay ? "Сохранение…" : "Переключение…";
-        Status.ToolTip = null;
+        SetStatus(changeDisplay ? "Сохранение…" : "Переключение…");
         // Let WPF paint the status before entering the synchronous Windows API calls.
         await Dispatcher.Yield(DispatcherPriority.Background);
         try
@@ -131,9 +151,9 @@ public partial class MainWindow : Window
                 await Dispatcher.Yield(DispatcherPriority.ContextIdle);
                 FitToWorkArea();
             }
-            Status.Text = $"Готово: {selected.DisplayName}";
+            SetStatus($"Готово: {selected.DisplayName}");
         }
-        catch (Exception ex) { Refresh(quiet: true); Status.Text = "Не удалось переключить"; Status.ToolTip = ex.Message; }
+        catch (Exception ex) { Refresh(quiet: true); SetStatus("Не удалось переключить — Y / F1: подробности", ex.Message); }
         finally { busy = false; UpdateHints(); }
     }
     private void PollPad()
@@ -146,15 +166,28 @@ public partial class MainWindow : Window
     }
     private void Execute(PadAction action)
     {
-        if (action == PadAction.Close) { if (!showingPrograms || !Programs.Back()) Close(); return; }
+        if (action == PadAction.Close) { if (CloseDetails()) return; if (!showingPrograms || !Programs.Back()) Close(); return; }
         if (busy || Programs.IsBusy) return;
+        if (detailsOpen)
+        {
+            if (action == PadAction.Up) ErrorScroll.LineUp();
+            else if (action == PadAction.Down) ErrorScroll.LineDown();
+            else if (action == PadAction.Confirm) CloseDetails();
+            return;
+        }
         switch (action)
         {
             case PadAction.Left:
             case PadAction.PreviousSection: SwitchSection((AppSection)Math.Max(0, (int)navigation.Section - 1)); break;
             case PadAction.Right:
             case PadAction.NextSection: SwitchSection((AppSection)Math.Min(2, (int)navigation.Section + 1)); break;
-            case PadAction.ToggleList: if (showingPrograms) Programs.SelectMode(!navigation.LaunchList); break;
+            case PadAction.ToggleList:
+                if (showingPrograms && !Programs.InPanel) Programs.SelectMode(!navigation.LaunchList);
+                break;
+            case PadAction.Details:
+                if (showingPrograms) _ = Programs.CatalogAsync();
+                else OpenDetails();
+                break;
             case PadAction.Up: if (showingPrograms) Programs.Move(-1); else Move(-1); break;
             case PadAction.Down: if (showingPrograms) Programs.Move(1); else Move(1); break;
             case PadAction.Confirm: if (showingPrograms) _ = Programs.ConfirmAsync(); else _ = ApplySelected(); break;
@@ -179,21 +212,39 @@ public partial class MainWindow : Window
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape) { if (!e.IsRepeat) Execute(PadAction.Close); e.Handled = true; return; }
+        if (Programs.Editing) return;
         if (e.Key == Key.Enter && Keyboard.FocusedElement is ButtonBase) return;
         if (e.Key == Key.F5 && !busy) { Refresh(); e.Handled = true; return; }
-        var action = e.Key switch { Key.Up => PadAction.Up, Key.Down => PadAction.Down, Key.Left => PadAction.Left, Key.Right => PadAction.Right, Key.Enter => PadAction.Confirm, Key.X => PadAction.ToggleList, _ => PadAction.None };
-        if (action == PadAction.None || (e.IsRepeat && action is PadAction.Confirm or PadAction.ToggleList)) return;
+        var action = e.Key switch { Key.Up => PadAction.Up, Key.Down => PadAction.Down, Key.Left => PadAction.Left, Key.Right => PadAction.Right, Key.Enter => PadAction.Confirm, Key.X => PadAction.ToggleList, Key.Y => PadAction.Details, Key.F1 => PadAction.Details, _ => PadAction.None };
+        if (action == PadAction.None || (e.IsRepeat && action is PadAction.Confirm or PadAction.ToggleList or PadAction.Details)) return;
         Execute(action); e.Handled = true;
     }
-    private void DragWindow(object sender, MouseButtonEventArgs e)
-    {
-        if (e.LeftButton != MouseButtonState.Pressed) return;
-        for (var source = e.OriginalSource as DependencyObject; source != null && source != sender; source = VisualTreeHelper.GetParent(source))
-            if (source is ButtonBase) return;
-        DragMove();
-    }
     private void AudioClick(object sender, RoutedEventArgs e) => SwitchTab(false);
+    private async void CatalogCommandClick(object sender, RoutedEventArgs e) => await Programs.CatalogAsync();
+    private async void SaveCommandClick(object sender, RoutedEventArgs e) => await Programs.CatalogAsync();
+    private void BackCommandClick(object sender, RoutedEventArgs e) { Execute(PadAction.Close); }
     private void DisplayClick(object sender, RoutedEventArgs e) => SwitchTab(true);
     private void ProgramsClick(object sender, RoutedEventArgs e) => SwitchSection(AppSection.Programs);
-    private async void ApplyDoubleClick(object sender, MouseButtonEventArgs e) { if (ItemsControl.ContainerFromElement(Devices, e.OriginalSource as DependencyObject) is ListBoxItem) await ApplySelected(); }
+    private async void ApplyMouseClick(object sender, MouseButtonEventArgs e)
+    {
+        if (!dragged && ItemsControl.ContainerFromElement(Devices, e.OriginalSource as DependencyObject) is ListBoxItem item)
+        { Devices.SelectedItem = item.DataContext; e.Handled = true; await ApplySelected(); }
+    }
+    private void IgnoreRightButton(object sender, MouseButtonEventArgs e) => e.Handled = true;
+    private void PointerDown(object sender, MouseButtonEventArgs e)
+    {
+        pointerStart = e.GetPosition(this); dragged = false; dragAllowed = true;
+        for (var node = e.OriginalSource as DependencyObject; node != null && node != this; node = VisualTreeHelper.GetParent(node))
+            if (node is TextBoxBase or ButtonBase or ScrollBar or Thumb) { dragAllowed = false; break; }
+    }
+    private void PointerMove(object sender, MouseEventArgs e)
+    {
+        if (!dragAllowed || e.LeftButton != MouseButtonState.Pressed) return;
+        var position = e.GetPosition(this);
+        if (Math.Abs(position.X - pointerStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(position.Y - pointerStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        dragAllowed = false; dragged = true; e.Handled = true; DragMove();
+    }
+    private void PointerUp(object sender, MouseButtonEventArgs e) { dragAllowed = false; if (dragged) e.Handled = true; }
 }
+

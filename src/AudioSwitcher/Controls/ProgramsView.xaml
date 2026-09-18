@@ -1,71 +1,33 @@
-<UserControl x:Class="AudioSwitcher.Controls.ProgramsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <UserControl.Resources>
-    <Style x:Key="NormalChoice" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-      <Setter Property="AutomationProperties.Name" Value="{Binding DisplayName}"/>
-    </Style>
-    <Style x:Key="ModalChoice" TargetType="ListBoxItem" BasedOn="{StaticResource NormalChoice}">
-      <Setter Property="MinHeight" Value="44"/><Setter Property="Padding" Value="12,8"/>
-    </Style>
-    <Style x:Key="ProgramRecord" TargetType="ListBoxItem" BasedOn="{StaticResource NormalChoice}">
-      <Setter Property="AutomationProperties.HelpText" Value="Нажмите на запись или используйте A / Enter, чтобы открыть действия"/>
-    </Style>
-    <Style x:Key="ProgramModeTab" TargetType="Button" BasedOn="{StaticResource SectionTab}">
-      <Setter Property="FontSize" Value="16"/><Setter Property="MinHeight" Value="36"/>
-    </Style>
-    <DataTemplate x:Key="ProgramRow">
-      <Grid ToolTip="Нажмите, чтобы открыть действия">
-        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <StackPanel Margin="0,0,12,0"><TextBlock Text="{Binding DisplayName}" FontSize="16" TextWrapping="Wrap"/><TextBlock Text="{Binding DisplayDetails}" ToolTip="{Binding DisplayDetails}" FontSize="12" Foreground="{StaticResource MutedText}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
-        <TextBlock Grid.Column="1" Text="›" FontSize="24" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" IsHitTestVisible="False"/>
-      </Grid>
-    </DataTemplate>
-    <DataTemplate x:Key="ActionRow">
-      <StackPanel>
-        <TextBlock Text="{Binding DisplayName}" FontSize="16" TextWrapping="Wrap"/>
-        <TextBlock Text="{Binding DisplayDetails}" FontSize="12" Foreground="{StaticResource MutedText}" Margin="0,4,0,0" TextWrapping="Wrap">
-          <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding DisplayDetails}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-        </TextBlock>
-      </StackPanel>
-    </DataTemplate>
-    <Style x:Key="ProgramList" TargetType="ListBox">
-      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-      <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
-      <Setter Property="ScrollViewer.CanContentScroll" Value="False"/>
-      <Setter Property="ItemTemplate" Value="{StaticResource ProgramRow}"/>
-      <Setter Property="ItemContainerStyle" Value="{StaticResource ProgramRecord}"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ScrollViewer Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer></ControlTemplate></Setter.Value></Setter>
-    </Style>
-  </UserControl.Resources>
-  <Grid x:Name="ViewRoot">
-    <Grid x:Name="ListsSurface">
-      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-      <WrapPanel Margin="4,0,0,12">
-        <Button x:Name="RunningMode" Style="{StaticResource ProgramModeTab}" Content="Запущенные" Click="RunningClick" AutomationProperties.Name="Запущенные приложения" Margin="8,0,18,0"/>
-        <Button x:Name="LaunchMode" Style="{StaticResource ProgramModeTab}" Content="Для запуска" Click="LaunchClick" AutomationProperties.Name="Каталог для запуска"/>
-      </WrapPanel>
-      <Grid Grid.Row="1">
-        <ListBox x:Name="RunningList" Style="{StaticResource ProgramList}" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Запущенные пользовательские приложения"/>
-        <ListBox x:Name="LaunchList" Style="{StaticResource ProgramList}" Visibility="Collapsed" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Добавленные программы для запуска"/>
-        <TextBlock x:Name="EmptyPrograms" Text="Нет запущенных приложений" Margin="12" TextWrapping="Wrap" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False"/>
-      </Grid>
-      <WrapPanel x:Name="CatalogTools" Grid.Row="2" Margin="0,10,0,0" Visibility="Collapsed">
-        <Button x:Name="AddProgram" Content="+ Добавить программу" Click="AddClick" FontSize="14" MinHeight="36" AutomationProperties.Name="Добавить программу"/>
-        <Button x:Name="ResetCatalog" Content="Сбросить каталог" Click="ResetClick" FontSize="12" Visibility="Collapsed" AutomationProperties.Name="Сбросить каталог с резервной копией"/>
-      </WrapPanel>
-    </Grid>
-    <Grid x:Name="PanelSurface" Visibility="Collapsed" Background="{StaticResource ModalBackdrop}" KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.ControlTabNavigation="Cycle">
-      <Border x:Name="PanelCard" Background="{StaticResource DialogSurface}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4" VerticalAlignment="Center">
-       <Grid>
-      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-      <TextBlock x:Name="PanelTitle" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" Margin="12,8,12,8"/>
-      <TextBlock x:Name="PanelDescription" Grid.Row="1" FontSize="12" Foreground="{StaticResource MutedText}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="48" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" Margin="12,0,12,12"/>
-      <ListBox x:Name="ProgramActions" Grid.Row="2" Style="{StaticResource ProgramList}" ItemTemplate="{StaticResource ActionRow}" ItemContainerStyle="{StaticResource ModalChoice}" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Действия с выбранной программой"/>
-      <ScrollViewer Grid.Row="3" Style="{StaticResource DeviceScrollViewer}" MaxHeight="64" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-        <TextBlock x:Name="PanelFeedback" FontSize="13" Foreground="{StaticResource ErrorText}" TextWrapping="Wrap" Margin="12,8,12,8" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
-      </ScrollViewer>
-       </Grid>
-      </Border>
-    </Grid>
+<UserControl x:Class="AudioSwitcher.Controls.ProgramsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:AudioSwitcher.Controls">
+ <UserControl.Resources>
+  <Style x:Key="NormalChoice" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="AutomationProperties.Name" Value="{Binding DisplayName}"/></Style>
+  <Style x:Key="ModalChoice" TargetType="ListBoxItem" BasedOn="{StaticResource NormalChoice}"><Style.Triggers><DataTrigger Binding="{Binding Id}" Value="terminate"><Setter Property="Foreground" Value="{DynamicResource ErrorText}"/></DataTrigger><DataTrigger Binding="{Binding Id}" Value="kill"><Setter Property="Foreground" Value="{DynamicResource ErrorText}"/></DataTrigger><DataTrigger Binding="{Binding Id}" Value="delete"><Setter Property="Foreground" Value="{DynamicResource ErrorText}"/></DataTrigger><DataTrigger Binding="{Binding Id}" Value="delete-entry"><Setter Property="Foreground" Value="{DynamicResource ErrorText}"/></DataTrigger></Style.Triggers></Style>
+  <Style x:Key="ProgramModeTab" TargetType="Button" BasedOn="{StaticResource SectionTab}"><Setter Property="FontSize" Value="17"/><Setter Property="MinHeight" Value="32"/></Style>
+  <DataTemplate x:Key="ProgramRow"><StackPanel><TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource Font22}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding DisplayDetails}" FontSize="{DynamicResource Font16}" Foreground="{DynamicResource MutedText}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate>
+  <DataTemplate x:Key="RunningRow"><StackPanel><TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource Font22}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding ScreenSummary}" FontSize="{DynamicResource Font16}" Foreground="{DynamicResource MutedText}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate>
+  <DataTemplate x:Key="ActionRow"><TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource Font22}" TextTrimming="CharacterEllipsis"/></DataTemplate>
+  <Style x:Key="ProgramList" TargetType="ListBox"><Setter Property="VerticalAlignment" Value="Top"/><Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><local:DeviceRowsPanel ClipToBounds="True"/></ItemsPanelTemplate></Setter.Value></Setter><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="ItemTemplate" Value="{StaticResource ProgramRow}"/><Setter Property="ItemContainerStyle" Value="{StaticResource NormalChoice}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ScrollViewer Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer></ControlTemplate></Setter.Value></Setter></Style>
+ </UserControl.Resources>
+ <Grid x:Name="ViewRoot"><Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <Grid x:Name="ListsSurface" Grid.Row="1">
+   <ListBox x:Name="RunningList" Style="{StaticResource ProgramList}" ItemTemplate="{StaticResource RunningRow}" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Запущенные пользовательские приложения"/>
+   <ListBox x:Name="LaunchList" Style="{StaticResource ProgramList}" Visibility="Collapsed" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Добавленные программы для запуска"/>
+   <TextBlock x:Name="EmptyPrograms" Margin="19,24" TextWrapping="Wrap" Foreground="{DynamicResource MutedText}" IsHitTestVisible="False"/>
   </Grid>
+  <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="17,0,0,16" VerticalAlignment="Top">
+   <local:SectionButton x:Name="RunningMode" Style="{StaticResource ProgramModeTab}" Content="Запущенные" Click="RunningClick" Margin="0,0,26,0" AutomationProperties.Name="Запущенные приложения"/>
+   <local:SectionButton x:Name="LaunchMode" Style="{StaticResource ProgramModeTab}" Content="Для запуска" Click="LaunchClick" AutomationProperties.Name="Каталог для запуска"/>
+  </StackPanel>
+  <WrapPanel x:Name="CatalogTools" Visibility="Collapsed"><Button x:Name="AddProgram" Content="Добавить программу" Click="AddClick"/><Button x:Name="ResetCatalog" Content="Сбросить каталог" Click="ResetClick" Visibility="Collapsed"/></WrapPanel>
+  <Grid x:Name="PanelSurface" Grid.Row="1" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <Border x:Name="PanelCard" Padding="17,12" MinHeight="82" Margin="0,0,0,6"><StackPanel VerticalAlignment="Center"><TextBlock x:Name="PanelTitle" FontSize="{DynamicResource Font22}" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="PanelDescription" FontSize="{DynamicResource Font16}" Foreground="{DynamicResource MutedText}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel></Border>
+   <Grid Grid.Row="1"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <ListBox x:Name="ProgramActions" Style="{StaticResource ProgramList}" ItemTemplate="{StaticResource ActionRow}" ItemContainerStyle="{StaticResource ModalChoice}" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Действия с выбранной программой"/>
+    <TextBlock x:Name="PanelWarning" Grid.Row="1" Margin="17,12" FontSize="{DynamicResource Font16}" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Visibility="Collapsed"/>
+    <TextBlock x:Name="PanelFeedback" Grid.Row="2" FontSize="{DynamicResource Font16}" Foreground="{DynamicResource ErrorText}" TextWrapping="Wrap" Margin="17,8" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
+   </Grid>
+  </Grid>
+  <ContentControl x:Name="EditorHost" Grid.Row="1" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+ </Grid>
 </UserControl>
+

@@ -5,11 +5,11 @@ using System.Windows.Media;
 
 namespace AudioSwitcher.Controls;
 
-// The compact device picker scrolls whole rows. Equal row slots fill the viewport
-// so reaching the last device cannot leave a partial row or a gap at the top.
+// Keep compact, content-sized slots and a viewport containing complete rows.
+// Spare space stays below the list instead of stretching the device cards.
 public sealed class DeviceRowsPanel : Panel, IScrollInfo
 {
-    private double rowHeight = 76;
+    private double rowHeight = 56;
     private double verticalOffset;
     private int visibleRows = 1;
 
@@ -29,7 +29,7 @@ public sealed class DeviceRowsPanel : Panel, IScrollInfo
     protected override Size MeasureOverride(Size availableSize)
     {
         double width = double.IsFinite(availableSize.Width) ? availableSize.Width : 480;
-        double minimumHeight = 76;
+        double minimumHeight = 56;
         foreach (UIElement child in InternalChildren)
         {
             child.Measure(new Size(width, double.PositiveInfinity));
@@ -38,13 +38,13 @@ public sealed class DeviceRowsPanel : Panel, IScrollInfo
         double viewport = double.IsFinite(availableSize.Height) ? availableSize.Height : minimumHeight * InternalChildren.Count;
         double previousRow = verticalOffset / rowHeight;
         visibleRows = Math.Max(1, (int)Math.Floor(viewport / minimumHeight));
-        rowHeight = viewport >= minimumHeight ? viewport / visibleRows : minimumHeight;
+        rowHeight = minimumHeight;
         ViewportWidth = width;
-        ViewportHeight = viewport;
+        ViewportHeight = viewport >= minimumHeight ? visibleRows * rowHeight : viewport;
         ExtentHeight = InternalChildren.Count * rowHeight;
         verticalOffset = Math.Clamp((OversizedRows ? previousRow : Math.Round(previousRow)) * rowHeight, 0, MaxOffset);
         ScrollOwner?.InvalidateScrollInfo();
-        return new Size(width, Math.Min(viewport, ExtentHeight));
+        return new Size(width, Math.Min(ViewportHeight, ExtentHeight));
     }
 
     protected override Size ArrangeOverride(Size finalSize)

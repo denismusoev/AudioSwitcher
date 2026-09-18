@@ -26,11 +26,13 @@ public partial class ProgramsView : UserControl
     private string snapshotSignature = "";
     private RunningProgram? currentProgram;
     private LaunchEntry? currentEntry;
-    private ContentControl? modalHost;
+    public LaunchEntryDialog? Editor { get; private set; }
     public NavigationState Navigation { get; } = new();
-    public bool IsBusy => operating || editorOpen;
-    public bool InPanel => Navigation.Panel != ProgramPanel.List;
-    public string ActionHint => IsBusy ? "Подождите" : InPanel ? "Выбрать" : "Действия";
+    public bool IsBusy => operating || Editor?.IsSaving == true;
+    public bool Editing => editorOpen;
+    public string DetailsText => PanelTitle.Text + "\n\n" + PanelDescription.Text + (PanelFeedback.Visibility == Visibility.Visible ? "\n\n" + PanelFeedback.Text : "");
+    public bool InPanel => editorOpen || Navigation.Panel != ProgramPanel.List;
+    public string ActionHint => IsBusy ? "Подождите" : Editing ? "Сохранить" : InPanel ? "Выбрать" : "Действия";
     public event Action<string, string?>? StatusChanged;
     public event Action? ContextChanged;
 
@@ -38,17 +40,11 @@ public partial class ProgramsView : UserControl
     public ProgramsView(LaunchCatalogStore store)
     {
         this.store = store; InitializeComponent();
-        PanelSurface.SizeChanged += (_, e) => PanelCard.MaxHeight = Math.Max(0, e.NewSize.Height - 8);
+
     }
-    public void SetModalHost(ContentControl host)
+    private void ClosePanel()
     {
-        // Attach once: opening and closing a menu must not rebuild its visual tree.
-        ViewRoot.Children.Remove(PanelSurface);
-        modalHost = host; host.Content = PanelSurface;
-    }
-    private void CloseModal()
-    {
-        if (modalHost != null) modalHost.Visibility = Visibility.Collapsed;
+        PanelSurface.Visibility = Visibility.Collapsed;
     }
     public void Enter()
     {
@@ -61,33 +57,63 @@ public partial class ProgramsView : UserControl
     public void Leave() { lifetime?.Cancel(); lifetime?.Dispose(); lifetime = null; }
     public async Task RefreshAsync(bool quiet = false)
     {
-        if (Navigation.Section != AppSection.Programs || Navigation.LaunchList || InPanel || IsBusy || refreshing || lifetime == null) return;
+        if (Navigation.Section != AppSection.Programs || Navigation.LaunchList || Editing || (InPanel && currentProgram == null) || IsBusy || refreshing || lifetime == null) return;
         var active = lifetime; var token = active.Token; refreshing = true;
         if (!quiet) Notify("Загрузка приложений…");
         try
         {
             var snapshot = await windows.GetProgramsAsync(token);
-            if (active != lifetime || Navigation.Section != AppSection.Programs || Navigation.LaunchList || InPanel) return;
-            string signature = string.Join("|", snapshot.Select(p => $"{p.Identity}:{p.Name}:{string.Join(';', p.Windows.Select(w => $"{w.Handle}:{w.Title}:{w.Screen}:{w.NotResponding}"))}"));
-            if (signature != snapshotSignature)
-            {
-                var selected = (RunningList.SelectedItem as RunningProgram)?.Identity;
-                RunningList.ItemsSource = snapshot;
-                RunningList.SelectedItem = snapshot.FirstOrDefault(p => p.Identity == selected) ?? snapshot.FirstOrDefault();
-                snapshotSignature = signature;
-                ScrollSelection(RunningList);
-            }
-            UpdateEmpty(); if (!quiet) Notify("Готово");
+            if (active != lifetime || Navigation.Section != AppSection.Programs || Navigation.LaunchList || Editing || IsBusy) return;
+            ApplyRunningSnapshot(snapshot, quiet);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (active == lifetime) Notify("Не удалось загрузить приложения", ex.Message); }
         finally { refreshing = false; }
     }
+    private void ApplyRunningSnapshot(IReadOnlyList<RunningProgram> snapshot, bool quiet)
+    {
+        string signature = string.Join("|", snapshot.Select(p => $"{p.Identity}:{p.Name}:{string.Join(';', p.Windows.Select(w => $"{w.Handle}:{w.Title}:{w.Screen}:{w.NotResponding}"))}"));
+        if (signature != snapshotSignature)
+        {
+            var selected = (RunningList.SelectedItem as RunningProgram)?.Identity;
+            RunningList.ItemsSource = snapshot;
+            RunningList.SelectedItem = snapshot.FirstOrDefault(p => p.Identity == selected) ?? snapshot.FirstOrDefault();
+            snapshotSignature = signature;
+            if (!InPanel) ScrollSelection(RunningList);
+        }
+        if (InPanel && currentProgram != null)
+        {
+            var latest = snapshot.FirstOrDefault(p => p.Identity == currentProgram.Identity);
+            if (latest == null)
+            {
+                currentProgram = null; ReturnToList(focus: Window.GetWindow(this)?.IsActive == true); Notify("Программа уже закрыта"); return;
+            }
+            currentProgram = latest;
+            if (Navigation.Panel == ProgramPanel.Actions)
+            {
+                PanelTitle.Text = latest.Name;
+                PanelDescription.Text = string.Join(", ", latest.Windows.Select(w => w.Screen).Distinct());
+            }
+            else if (Navigation.Panel == ProgramPanel.Windows)
+            {
+                var selected = (ProgramActions.SelectedItem as WindowTarget)?.Handle;
+                var oldWindows = ProgramActions.ItemsSource?.Cast<WindowTarget>().ToArray() ?? [];
+                if (!oldWindows.SequenceEqual(latest.Windows))
+                {
+                    ProgramActions.ItemsSource = latest.Windows;
+                    ProgramActions.SelectedItem = latest.Windows.FirstOrDefault(w => w.Handle == selected) ?? latest.Windows.FirstOrDefault();
+                    ScrollSelection(ProgramActions);
+                }
+                PanelDescription.Text = latest.Name;
+            }
+        }
+        UpdateEmpty(); if (!quiet) Notify("Готово");
+    }
     private void Notify(string text, string? details = null)
     {
         if (InPanel && operating)
         {
-            PanelFeedback.Text = text; PanelFeedback.ToolTip = details;
+            PanelFeedback.Text = details == null || details == text ? text : $"{text}\n{details}";
             PanelFeedback.Visibility = Visibility.Visible;
         }
         StatusChanged?.Invoke(text, details);
@@ -104,11 +130,14 @@ public partial class ProgramsView : UserControl
     {
         RunningList.Visibility = Navigation.LaunchList ? Visibility.Collapsed : Visibility.Visible;
         LaunchList.Visibility = Navigation.LaunchList ? Visibility.Visible : Visibility.Collapsed;
-        CatalogTools.Visibility = Navigation.LaunchList ? Visibility.Visible : Visibility.Collapsed;
-        RunningMode.Foreground = (System.Windows.Media.Brush)FindResource(Navigation.LaunchList ? "MutedText" : "Text");
-        LaunchMode.Foreground = (System.Windows.Media.Brush)FindResource(Navigation.LaunchList ? "Text" : "MutedText");
-        RunningMode.FontWeight = Navigation.LaunchList ? FontWeights.Normal : FontWeights.SemiBold;
-        LaunchMode.FontWeight = Navigation.LaunchList ? FontWeights.SemiBold : FontWeights.Normal;
+        CatalogTools.Visibility = Visibility.Collapsed;
+        RunningMode.SetResourceReference(Control.ForegroundProperty, Navigation.LaunchList ? "MutedText" : "Text");
+        LaunchMode.SetResourceReference(Control.ForegroundProperty, Navigation.LaunchList ? "Text" : "MutedText");
+        RunningMode.IsSelected = !Navigation.LaunchList; LaunchMode.IsSelected = Navigation.LaunchList;
+        RunningMode.SetResourceReference(Control.BorderBrushProperty, Navigation.LaunchList ? "WindowSurface" : "Accent");
+        LaunchMode.SetResourceReference(Control.BorderBrushProperty, Navigation.LaunchList ? "Accent" : "WindowSurface");
+        RunningMode.FontWeight = Navigation.LaunchList ? FontWeights.Normal : FontWeights.Normal;
+        LaunchMode.FontWeight = Navigation.LaunchList ? FontWeights.Normal : FontWeights.Normal;
         System.Windows.Automation.AutomationProperties.SetHelpText(RunningMode, Navigation.LaunchList ? "Показать запущенные программы" : "Выбранный список");
         System.Windows.Automation.AutomationProperties.SetHelpText(LaunchMode, Navigation.LaunchList ? "Выбранный список" : "Показать программы для запуска");
         UpdateEmpty(); ContextChanged?.Invoke();
@@ -132,6 +161,11 @@ public partial class ProgramsView : UserControl
     public void Move(int direction)
     {
         if (IsBusy) return;
+        if (Editing)
+        {
+            Editor?.MoveField(direction);
+            return;
+        }
         var list = InPanel ? ProgramActions : Navigation.LaunchList ? LaunchList : RunningList;
         if (list.Items.Count == 0) return;
         list.SelectedIndex = Math.Clamp(list.SelectedIndex + direction, 0, list.Items.Count - 1); list.Focus(); ScrollSelection(list);
@@ -143,14 +177,16 @@ public partial class ProgramsView : UserControl
         if (list.SelectedItem != null && list.ItemContainerGenerator.ContainerFromItem(list.SelectedItem) is ListBoxItem item) item.Focus();
         else list.Focus();
     }
+    public void RestoreFocus() => FocusSelection(InPanel ? ProgramActions : Navigation.LaunchList ? LaunchList : RunningList);
     public bool Back()
     {
         if (IsBusy) return true;
+        if (Editing) { if (Editor?.EndFieldInput() != true) CloseEditor(); return true; }
         if (!Navigation.Back()) return false;
         if (Navigation.Panel == ProgramPanel.Actions) ShowActions();
         else
         {
-            CloseModal(); ListsSurface.Visibility = Visibility.Visible; ListsSurface.IsEnabled = ListsSurface.IsHitTestVisible = true; PanelSurface.Visibility = Visibility.Collapsed;
+            ClosePanel(); ListsSurface.Visibility = Visibility.Visible; ListsSurface.IsEnabled = ListsSurface.IsHitTestVisible = true; PanelSurface.Visibility = Visibility.Collapsed;
             FocusSelection(Navigation.LaunchList ? LaunchList : RunningList); UpdateEmpty(); ContextChanged?.Invoke();
         }
         return true;
@@ -158,10 +194,12 @@ public partial class ProgramsView : UserControl
     public async Task ConfirmAsync()
     {
         if (IsBusy) return;
+        if (Editing) { Editor?.ConfirmField(); return; }
         if (!InPanel)
         {
             if (Navigation.LaunchList && LaunchList.SelectedItem is CatalogRow row)
-            { currentEntry = row.Entry; currentProgram = null; ShowActions(); }
+            { currentEntry = row.Entry; currentProgram = null;
+                if (await RunOperation("Открытие…", async token => { await launcher.LaunchAsync(currentEntry, token); return new(ProgramResultCode.Success, "Команда запуска отправлена"); })) ReturnToList(); }
             else if (!Navigation.LaunchList && RunningList.SelectedItem is RunningProgram program)
             { currentProgram = program; currentEntry = null; ShowActions(); }
             return;
@@ -182,11 +220,13 @@ public partial class ProgramsView : UserControl
                 else ShowPanel(ProgramPanel.Windows, "Какое окно переместить?", currentProgram.Name, currentProgram.Windows);
                 break;
             case "terminate":
-                ShowPanel(ProgramPanel.ConfirmTermination, $"Завершить {currentProgram?.Name}?", "Несохранённые данные будут потеряны. Все окна выбранного процесса закроются.",
-                    new[] { new Choice("cancel", "Отмена"), new Choice("kill", "Завершить принудительно") }); break;
+                bool normalClose = currentProgram != null && processes.UsesNormalClose(currentProgram.Identity);
+                ShowPanel(ProgramPanel.ConfirmTermination, normalClose ? "Закрыть окна Проводника?" : $"Завершить {currentProgram?.Name}?", "Запущенные программы",
+                    new[] { new Choice("cancel", "Отмена"), new Choice("kill", normalClose ? "Закрыть окна" : "Завершить принудительно") }); break;
             case "kill":
                 if (currentProgram != null && await RunOperation("Завершение…", token => processes.TerminateAsync(currentProgram.Identity, token)))
                 { ReturnToList(); await RefreshAsync(quiet: true); } break;
+            case "add": await EditEntry(null); break;
             case "edit": if (currentEntry != null) await EditEntry(currentEntry); break;
             case "delete":
                 ShowPanel(ProgramPanel.ConfirmDelete, $"Удалить запись «{currentEntry?.Name}»?", "Приложение и файл ярлыка останутся на компьютере.",
@@ -201,26 +241,45 @@ public partial class ProgramsView : UserControl
                 if (await RunOperation("Сохранение копии…", async _ => { await Task.Run(store.Reset); catalog = store.Load(); ShowCatalog(); return new(ProgramResultCode.Success, "Каталог сброшен. Копия исходного файла сохранена"); })) ReturnToList(); break;
         }
     }
-    private void ReturnToList()
+    private void ReturnToList(bool focus = true)
     {
-        CloseModal(); Navigation.Panel = ProgramPanel.List; ListsSurface.Visibility = Visibility.Visible; ListsSurface.IsEnabled = ListsSurface.IsHitTestVisible = true; PanelSurface.Visibility = Visibility.Collapsed;
-        UpdateEmpty(); ContextChanged?.Invoke(); FocusSelection(Navigation.LaunchList ? LaunchList : RunningList);
+        ClosePanel(); Navigation.Panel = ProgramPanel.List; ListsSurface.Visibility = Visibility.Visible; ListsSurface.IsEnabled = ListsSurface.IsHitTestVisible = true; PanelSurface.Visibility = Visibility.Collapsed;
+        UpdateEmpty(); ContextChanged?.Invoke(); if (focus) FocusSelection(Navigation.LaunchList ? LaunchList : RunningList);
+    }
+    public async Task CatalogAsync()
+    {
+        if (IsBusy) return;
+        if (Editing) { if (Editor != null) await Editor.SaveAsync(); return; }
+        if (InPanel) return;
+        if (!Navigation.LaunchList) { await ConfirmAsync(); return; }
+        currentEntry = (LaunchList.SelectedItem as CatalogRow)?.Entry; currentProgram = null;
+        if (!catalog.CanSave) { ResetClick(this, new RoutedEventArgs()); return; }
+        if (currentEntry == null) ShowPanel(ProgramPanel.Actions, "Каталог запуска", "Каталог пуст", new[] { new Choice("add", "Добавить программу") });
+        else ShowActions();
     }
     private void ShowActions()
     {
+        if (Navigation.LaunchList && currentEntry == null)
+        {
+            ShowPanel(ProgramPanel.Actions, "Каталог запуска", "Каталог пуст", new[] { new Choice("add", "Добавить программу") });
+            return;
+        }
         if (Navigation.LaunchList)
-            ShowPanel(ProgramPanel.Actions, currentEntry?.Name ?? "Запись каталога", "Выберите действие", new[] { new Choice("launch", "Запустить"), new Choice("delete", "Удалить"), new Choice("edit", "Редактировать"), new Choice("cancel", "Отмена") });
+            ShowPanel(ProgramPanel.Actions, "Каталог запуска", currentEntry?.Name ?? "Каталог пуст", new[] { new Choice("edit", "Редактировать"), new Choice("delete", "Удалить запись"), new Choice("add", "Добавить программу") });
         else
-            ShowPanel(ProgramPanel.Actions, currentProgram?.Name ?? "Программа", "Выберите действие", new[] { new Choice("move", "На главный экран", "Переместить окно на текущий главный монитор"), new Choice("terminate", "Завершить принудительно", "Все окна этого экземпляра программы закроются") });
+            ShowPanel(ProgramPanel.Actions, currentProgram?.Name ?? "Программа", string.Join(", ", currentProgram?.Windows.Select(w => w.Screen).Distinct() ?? []), new[] { new Choice("move", "На главный экран"), new Choice("terminate", currentProgram != null && processes.UsesNormalClose(currentProgram.Identity) ? "Закрыть окна" : "Завершить принудительно") });
     }
     private void ShowPanel(ProgramPanel panel, string title, string description, System.Collections.IEnumerable choices)
     {
         Navigation.Panel = panel; PanelTitle.Text = title; PanelDescription.Text = description;
+        bool confirmation = panel is ProgramPanel.ConfirmTermination or ProgramPanel.ConfirmDelete or ProgramPanel.ConfirmReset;
+        PanelDescription.Text = confirmation ? Navigation.LaunchList ? "Каталог запуска" : "Запущенные программы" : description;
+        PanelWarning.Text = "";
+        PanelWarning.Visibility = Visibility.Collapsed;
         PanelFeedback.Text = ""; PanelFeedback.ToolTip = null; PanelFeedback.Visibility = Visibility.Collapsed;
-        PanelFeedback.Foreground = (System.Windows.Media.Brush)FindResource("MutedText");
+        PanelFeedback.SetResourceReference(TextBlock.ForegroundProperty, "MutedText");
         ProgramActions.ItemsSource = choices; ProgramActions.SelectedIndex = 0;
-        if (modalHost != null) modalHost.Visibility = Visibility.Visible;
-        ListsSurface.Visibility = Visibility.Visible;
+        ListsSurface.Visibility = Visibility.Collapsed;
         ListsSurface.IsEnabled = ListsSurface.IsHitTestVisible = false;
         PanelSurface.Visibility = Visibility.Visible;
         PanelSurface.IsHitTestVisible = true;
@@ -229,7 +288,7 @@ public partial class ProgramsView : UserControl
     private async Task MoveWindow(WindowTarget target)
     {
         if (!await RunOperation("Перемещение…", token => mover.MoveToPrimaryAsync(target, token))) return;
-        ReturnToList();
+        ReturnToList(focus: false);
         // Let WPF commit the panel transition before replacing the list source.
         // Updating ItemsSource in the same layout pass can leave stale selected-row
         // pixels behind after the native window has moved between monitors.
@@ -240,11 +299,11 @@ public partial class ProgramsView : UserControl
     {
         if (IsBusy || lifetime == null) return false;
         operating = true; ListsSurface.IsEnabled = false; PanelSurface.IsHitTestVisible = false; Notify(status); ContextChanged?.Invoke();
-        PanelFeedback.Foreground = (System.Windows.Media.Brush)FindResource("MutedText");
+        PanelFeedback.SetResourceReference(TextBlock.ForegroundProperty, "MutedText");
         try
         {
             var result = await operation(lifetime.Token); Notify(result.Message, result.Details);
-            PanelFeedback.Foreground = (System.Windows.Media.Brush)FindResource(result.Succeeded ? "Text" : "ErrorText");
+            PanelFeedback.SetResourceReference(TextBlock.ForegroundProperty, result.Succeeded ? "Text" : "ErrorText");
             return result.Succeeded;
         }
         catch (OperationCanceledException) { return false; }
@@ -252,7 +311,7 @@ public partial class ProgramsView : UserControl
         {
             string message = ex.Message.ReplaceLineEndings(" ");
             Notify(message.Length <= 140 ? message : message[..137] + "…", ex.Message);
-            PanelFeedback.Foreground = (System.Windows.Media.Brush)FindResource("ErrorText");
+            PanelFeedback.SetResourceReference(TextBlock.ForegroundProperty, "ErrorText");
             return false;
         }
         finally { operating = false; ListsSurface.IsEnabled = !InPanel; PanelSurface.IsHitTestVisible = true; ContextChanged?.Invoke(); }
@@ -260,19 +319,28 @@ public partial class ProgramsView : UserControl
     private async Task EditEntry(LaunchEntry? entry)
     {
         if (IsBusy || !catalog.CanSave) return;
-        editorOpen = true; ContextChanged?.Invoke();
-        try
-        {
-            var dialog = new LaunchEntryDialog(entry, async nextEntry => {
-                var entries = catalog.Catalog.Entries.Where(e => e.Id != nextEntry.Id).Append(nextEntry).ToArray();
+        editorOpen = true;
+        ListsSurface.Visibility = PanelSurface.Visibility = Visibility.Collapsed;
+        Editor = new LaunchEntryDialog(entry, async nextEntry => {
+                var entries = catalog.Catalog.Entries.Any(e => e.Id == nextEntry.Id)
+                    ? catalog.Catalog.Entries.Select(e => e.Id == nextEntry.Id ? nextEntry : e).ToArray()
+                    : catalog.Catalog.Entries.Append(nextEntry).ToArray();
                 var next = new LaunchCatalog(1, entries);
                 await Task.Run(() => store.Save(next)); catalog = new(next, true, null); currentEntry = nextEntry; ShowCatalog(nextEntry.Id); Notify("Программа сохранена");
-            }) { Owner = Window.GetWindow(this) };
-            dialog.ShowDialog();
-        }
-        finally { editorOpen = false; ContextChanged?.Invoke(); }
-        if (InPanel) ShowActions(); UpdateEmpty();
+            });
+        Editor.Completed += CloseEditor;
+        Editor.BusyChanged += () => ContextChanged?.Invoke();
+        EditorHost.Content = Editor; EditorHost.Visibility = Visibility.Visible;
+        ContextChanged?.Invoke();
         await Task.CompletedTask;
+    }
+    private void CloseEditor()
+    {
+        if (Editor?.IsSaving == true) return;
+        editorOpen = false; EditorHost.Visibility = Visibility.Collapsed; EditorHost.Content = null; Editor = null;
+        if (Navigation.Panel != ProgramPanel.List) ShowActions();
+        else ReturnToList();
+        UpdateEmpty(); ContextChanged?.Invoke();
     }
     private void RunningClick(object sender, RoutedEventArgs e) => SelectMode(false);
     private void LaunchClick(object sender, RoutedEventArgs e) => SelectMode(true);
@@ -283,11 +351,20 @@ public partial class ProgramsView : UserControl
         ShowPanel(ProgramPanel.ConfirmReset, "Сбросить каталог?", "Исходный файл будет сохранён рядом с каталогом как .bak. Список для запуска станет пустым.",
             new[] { new Choice("cancel", "Отмена"), new Choice("reset", "Сохранить копию и сбросить") });
     }
+    private ListBoxItem? pressedItem;
+    private void ListPress(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBox list || ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is not ListBoxItem item) return;
+        pressedItem = item;
+        list.SelectedItem = item.DataContext; list.Focus(); e.Handled = true;
+    }
     private async void ListClick(object sender, MouseButtonEventArgs e)
     {
-        // A double-click's second release must not execute a newly opened panel.
-        if (IsBusy || e.ClickCount > 1 || sender is not ListBox list ||
+        if (IsBusy || sender is not ListBox list ||
             ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is not ListBoxItem item) return;
-        list.SelectedItem = item.DataContext; e.Handled = true; await ConfirmAsync();
+        e.Handled = true;
+        if (!ReferenceEquals(item, pressedItem)) return;
+        list.SelectedItem = item.DataContext; pressedItem = null; await ConfirmAsync();
     }
 }
+

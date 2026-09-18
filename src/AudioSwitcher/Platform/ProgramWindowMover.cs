@@ -46,7 +46,6 @@ public sealed class ProgramWindowMover
         if (!ProgramNative.WindowMatches(target) || ProgramNative.WaitForSingleObject(process, 0) == 0)
             return new(ProgramResultCode.TargetChanged, "Выбранное окно уже закрыто");
         cancellationToken.ThrowIfCancellationRequested();
-        nint foreground = ProgramNative.GetForegroundWindow();
         if (maximized || minimized)
         {
             // WINDOWPLACEMENT uses workspace coordinates. Account for taskbars at top/left.
@@ -71,11 +70,6 @@ public sealed class ProgramWindowMover
         {
             Thread.Sleep(100);
             cancellationToken.ThrowIfCancellationRequested();
-            // Windows has no SW_MAXIMIZENOACTIVATE. Restoring a minimized maximized window
-            // can activate it; return control immediately, without overriding a user switch
-            // to an unrelated window during the operation.
-            if (foreground != 0 && foreground != target.Handle && ProgramNative.IsWindow(foreground) &&
-                ProgramNative.GetForegroundWindow() == target.Handle) ProgramNative.SetForegroundWindow(foreground);
             if (!ProgramNative.WindowMatches(target) || ProgramNative.WaitForSingleObject(process, 0) == 0)
                 return new(ProgramResultCode.AlreadyExited, "Программа уже закрыта");
             nint currentPrimary = ProgramNative.MonitorFromPoint(new(0, 0), 1);
@@ -94,8 +88,19 @@ public sealed class ProgramWindowMover
             // Allow the application and DPI change to settle before declaring success.
             if (timeout.ElapsedMilliseconds >= 600)
             {
-                if (foreground != target.Handle && ProgramNative.GetForegroundWindow() == target.Handle) continue;
-                return new(ProgramResultCode.Success, $"Окно перемещено на главный экран ({destination.Device.Replace("\\\\.\\DISPLAY", "Экран ")})");
+                if (!ProgramNative.WindowMatches(target)) return new(ProgramResultCode.TargetChanged, "Выбранное окно изменилось");
+                ProgramNative.ShowWindowAsync(target.Handle, maximized ? 3 : 5);
+                ProgramNative.SetForegroundWindow(target.Handle);
+                for (int attempt = 0; attempt < 10; attempt++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!ProgramNative.WindowMatches(target)) return new(ProgramResultCode.AlreadyExited, "Окно уже закрыто");
+                    if (ProgramNative.GetForegroundWindow() == target.Handle && ProgramNative.IsWindowVisible(target.Handle))
+                        return new(ProgramResultCode.Success, "Приложение показано на главном экране");
+                    ProgramNative.SetForegroundWindow(target.Handle);
+                    Thread.Sleep(50);
+                }
+                return new(ProgramResultCode.TimedOut, "Окно перенесено, но Windows не подтвердила передачу фокуса");
             }
         }
         return new(ProgramResultCode.TimedOut, "Не удалось подтвердить перенос. Повторите попытку или включите оконный режим без рамки",

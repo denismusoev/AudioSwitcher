@@ -59,6 +59,7 @@ public sealed class ProgramWindowService
         cancellationToken.ThrowIfCancellationRequested();
         if (!enumerated) throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows не предоставила доступ к списку окон текущего рабочего стола");
         return groups.Select(g => new RunningProgram(g.Key, g.Value.Name, g.Value.Windows.OrderBy(w => w.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(w => w.Handle).ToArray()))
+            .GroupBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).SelectMany(group => group.Select(p => p with { Distinguish = group.Count() > 1 }))
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(p => p.Identity.Pid).ToArray();
     }
 

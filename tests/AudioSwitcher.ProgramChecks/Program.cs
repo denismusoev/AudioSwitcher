@@ -26,6 +26,23 @@ async Task<RunningProgram> Start(string suffix, string extra = "")
 }
 try
 {
+    await Check("Explorer uses normal window close; stale identity cannot select that policy", () => {
+        var systemExplorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+        var explorers = Process.GetProcessesByName("explorer");
+        try
+        {
+            foreach (var explorer in explorers)
+            {
+                if (!string.Equals(explorer.MainModule?.FileName, systemExplorer, StringComparison.OrdinalIgnoreCase)) continue;
+                var identity = new ProcessIdentity(explorer.Id, explorer.StartTime.ToUniversalTime().ToFileTimeUtc());
+                Require(processes.UsesNormalClose(identity), "Explorer would use force termination");
+                Require(!processes.UsesNormalClose(identity with { Created = identity.Created + 1 }), "Stale identity accepted");
+                return Task.CompletedTask;
+            }
+            throw new Exception("System Explorer unavailable for read-only policy check");
+        }
+        finally { foreach (var explorer in explorers) explorer.Dispose(); }
+    });
     async Task<RunningProgram> WaitForLaunched(string title)
     {
         for (int i = 0; i < 100; i++)
@@ -106,6 +123,23 @@ try
         var result = await new ProgramWindowMover().MoveToPrimaryAsync(first.Windows[0] with { Handle = second.Windows[0].Handle });
         Require(result.Code == ProgramResultCode.TargetChanged, result.Message);
     });
+    await Check("Moving own minimized fixture restores it on primary and reports activation outcome", async () => {
+        var program = await Start("activate on primary", "--minimized");
+        var target = program.Windows[0];
+        var observer = await Start("activation grant observer");
+        await Task.Delay(300); // Foreground fixture grants its controller activation rights.
+        bool activationAuthorized = FixtureNative.GetForegroundWindow() == observer.Windows[0].Handle;
+        var result = await new ProgramWindowMover().MoveToPrimaryAsync(target);
+        Require(!FixtureNative.IsIconic(target.Handle), "Window not restored");
+        Require(FixtureNative.MonitorFromWindow(target.Handle, 2) == FixtureNative.MonitorFromPoint(new(0, 0), 1), "Not on primary");
+        if (result.Succeeded) Require(FixtureNative.GetForegroundWindow() == target.Handle, "Success reported without focus transfer");
+        else if (!activationAuthorized)
+        {
+            Require(result.Code == ProgramResultCode.TimedOut && result.Message.Contains("передачу фокуса"), "Unexpected activation outcome: " + result.Message);
+            skipped++; Console.WriteLine("SKIP Foreground transfer: unattended controller has no foreground/input authorization; restore and denial reporting verified");
+        }
+        else Require(result.Succeeded, result.Message);
+    });
     if (args.Contains("--move-fixture"))
     {
         var monitors = FixtureNative.Monitors();
@@ -135,7 +169,7 @@ try
             Require(foreground != window.Handle, "Test window must be in background before move");
             var result = await new ProgramWindowMover().MoveToPrimaryAsync(window);
             Require(result.Succeeded, result.Message + ": " + result.Details);
-            Require(FixtureNative.GetForegroundWindow() == foreground, "Move stole input focus from the controlling window");
+            Require(FixtureNative.GetForegroundWindow() == window.Handle, "Move did not activate the target window");
             Require(FixtureNative.MonitorFromWindow(window.Handle, 2) == FixtureNative.MonitorFromPoint(new(0, 0), 1), "Not on primary");
             if (mode.Contains("--maximized")) Require(FixtureNative.IsZoomed(window.Handle), "Maximized state lost");
             Require(!FixtureNative.IsIconic(window.Handle), "Minimized window was not restored");
