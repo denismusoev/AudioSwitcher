@@ -1,0 +1,139 @@
+<div id="ps5-switcher-refined" aria-label="Упрощённый интерфейс переключения устройств">
+  <div class="pr-window">
+    <div class="pr-tabs" role="tablist" aria-label="Раздел">
+      <button type="button" class="pr-tab" id="pr-sound" role="tab" aria-selected="true" aria-controls="pr-panel" data-section="sound">Звук</button>
+      <button type="button" class="pr-tab" id="pr-displays" role="tab" aria-selected="false" aria-controls="pr-panel" data-section="displays">Мониторы</button>
+    </div>
+    <div id="pr-panel" role="tabpanel" aria-labelledby="pr-sound">
+      <div class="pr-devices" role="group" aria-label="Устройства вывода"></div>
+    </div>
+    <div class="pr-bottom">
+      <span class="pr-status" role="status" aria-live="polite">Готово</span>
+      <span class="pr-applyhint"><span class="pr-key">A</span><span> / Enter · Применить</span></span>
+    </div>
+    <div class="pr-footer">
+      <span><span class="pr-navigation">↑ ↓</span> Выбор</span>
+      <span><span class="pr-navigation">LB / RB</span> Раздел</span>
+      <span><span class="pr-key">B</span> / Esc · Закрыть</span>
+    </div>
+  </div>
+</div>
+<style>
+#ps5-switcher-refined { --pr-bg:light-dark(#ececee,#17181c); --pr-warm:light-dark(#e5e5e7,#222428); --pr-text:light-dark(#23252a,#eeeef0); --pr-muted:light-dark(#606269,#a6a7ac); --pr-selected:light-dark(#e2e2e5,#1b1d22); --pr-ring:light-dark(#555761,#c8c6c2); --pr-divider:light-dark(#d4d4d8,#2a2c31); --pr-height:76px; color:var(--pr-text); font:400 14px/1.45 "Segoe UI",system-ui,sans-serif; width:100%; }
+#ps5-switcher-refined * { box-sizing:border-box; }
+#ps5-switcher-refined .pr-window { max-width:480px; margin:0 auto; padding:24px 20px 20px; background:linear-gradient(120deg,var(--pr-warm),var(--pr-bg) 80%); border-radius:8px; }
+#ps5-switcher-refined .pr-tabs { display:flex; gap:28px; padding:0 12px; margin-bottom:22px; }
+#ps5-switcher-refined button { font:inherit; color:inherit; cursor:pointer; }
+#ps5-switcher-refined .pr-tab { min-height:44px; padding:0; background:transparent; border:0; color:var(--pr-muted); font-size:22px; font-weight:400; }
+#ps5-switcher-refined .pr-tab[aria-selected="true"] { color:var(--pr-text); }
+#ps5-switcher-refined .pr-devices { display:grid; gap:4px; }
+#ps5-switcher-refined .pr-device { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px; align-items:center; width:100%; min-height:var(--pr-height); border:1px solid transparent; border-radius:3px; padding:14px 16px; background:transparent; text-align:left; }
+#ps5-switcher-refined .pr-device[aria-pressed="true"] { border-color:var(--pr-ring); background:var(--pr-selected); }
+#ps5-switcher-refined .pr-device:hover { background:var(--pr-selected); }
+#ps5-switcher-refined .pr-copy { display:grid; gap:4px; min-width:0; overflow-wrap:anywhere; }
+#ps5-switcher-refined .pr-name { font-size:16px; font-weight:400; }
+#ps5-switcher-refined .pr-detail { font-size:12px; color:var(--pr-muted); }
+#ps5-switcher-refined .pr-current { display:inline-flex; align-items:center; gap:6px; color:var(--pr-muted); font-size:12px; }
+#ps5-switcher-refined .pr-check { width:14px; height:14px; }
+#ps5-switcher-refined .pr-bottom { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 20px; padding:0 12px; margin-top:32px; min-height:24px; font-size:12px; }
+#ps5-switcher-refined .pr-status { color:var(--pr-muted); }
+#ps5-switcher-refined .pr-applyhint { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+#ps5-switcher-refined .pr-key { display:inline-flex; justify-content:center; align-items:center; border:1px solid var(--pr-muted); border-radius:50%; min-width:18px; height:18px; padding:0 3px; color:var(--pr-text); font-size:12px; }
+#ps5-switcher-refined .pr-footer { display:flex; align-items:center; flex-wrap:wrap; gap:12px 22px; margin:22px 12px 0; padding-top:16px; border-top:1px solid var(--pr-divider); font-size:12px; color:var(--pr-muted); }
+#ps5-switcher-refined .pr-footer > span { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+#ps5-switcher-refined .pr-navigation { color:var(--pr-text); }
+#ps5-switcher-refined[data-details="false"] .pr-detail { display:none; }
+@media(max-width:380px) {
+  #ps5-switcher-refined .pr-window { padding:18px 12px; }
+  #ps5-switcher-refined .pr-tabs { gap:24px; padding:0 10px; margin-bottom:18px; }
+  #ps5-switcher-refined .pr-tab { font-size:20px; }
+  #ps5-switcher-refined .pr-device { padding:14px 10px; gap:8px; }
+  #ps5-switcher-refined .pr-current-label { display:none; }
+  #ps5-switcher-refined .pr-bottom { padding:0 10px; }
+  #ps5-switcher-refined .pr-footer { margin-left:10px; margin-right:10px; gap:12px 16px; }
+}
+</style>
+<script>
+(() => {
+  const root=document.getElementById('ps5-switcher-refined');
+  const list=root.querySelector('.pr-devices');
+  const panel=root.querySelector('#pr-panel');
+  const status=root.querySelector('.pr-status');
+  const design={details:true,rowHeight:76,status:'ready'};
+  const devices={
+    sound:[{name:'Динамики',detail:'fifine Microphone'},{name:'G27U',detail:'NVIDIA High Definition Audio'},{name:'Наушники',detail:'Oculus Virtual Audio Device'}],
+    displays:[{name:'Экран 1',detail:'2560 × 1440 · 120 Гц'},{name:'Экран 2',detail:'3840 × 2160 · 120 Гц'}]
+  };
+  const current={sound:1,displays:1};
+  let section='sound';
+  let selected=0;
+  let generation=0;
+  let completion='Готово';
+  function icons() { if(globalThis.lucide) globalThis.lucide.createIcons({attrs:{width:14,height:14}}); }
+  function renderList() {
+    list.setAttribute('aria-label',section === 'sound' ? 'Устройства вывода' : 'Мониторы');
+    list.innerHTML=devices[section].map((device,i)=>
+      '<button type="button" class="pr-device" data-device="'+i+'" aria-pressed="'+(selected === i)+'" aria-label="'+device.name+', '+device.detail+(i === current[section] ? ', используется' : '')+'"><span class="pr-copy"><span class="pr-name">'+device.name+'</span><span class="pr-detail">'+device.detail+'</span></span>'+(i === current[section] ? '<span class="pr-current"><i class="pr-check" data-lucide="check" aria-hidden="true"></i><span class="pr-current-label">'+(section === 'sound' ? 'Используется' : 'Главный')+'</span></span>' : '')+'</button>'
+    ).join('');
+    root.querySelectorAll('.pr-tab').forEach(tab=>tab.setAttribute('aria-selected',String(tab.dataset.section === section)));
+    panel.setAttribute('aria-labelledby',section === 'sound' ? 'pr-sound' : 'pr-displays');
+  }
+  function renderStatus() {
+    status.textContent={ready:completion,switching:'Переключение…',saving:'Сохранение…',error:'Не удалось переключить'}[design.status];
+    root.setAttribute('aria-busy',String(design.status === 'switching' || design.status === 'saving'));
+  }
+  function renderDesign() {
+    generation++;
+    root.dataset.details=String(design.details);
+    root.style.setProperty('--pr-height',design.rowHeight+'px');
+    renderStatus();
+  }
+  function focusSelected() { list.querySelector('[data-device="'+selected+'"]').focus(); }
+  function choose(index) { selected=index;renderList();icons();focusSelected(); }
+  function apply() {
+    if(design.status === 'switching' || design.status === 'saving') return;
+    const operation=++generation;
+    const appliedSection=section;
+    const appliedIndex=selected;
+    design.status='switching';renderStatus();
+    setTimeout(()=>{
+      if(operation !== generation) return;
+      if(appliedSection === 'displays') { design.status='saving';renderStatus(); }
+      setTimeout(()=>{
+        if(operation !== generation) return;
+        current[appliedSection]=appliedIndex;
+        completion='Готово: '+devices[appliedSection][appliedIndex].name;
+        design.status='ready';
+        const focusedRow=Boolean(list.contains(document.activeElement));
+        renderList();icons();renderStatus();
+        if(focusedRow) focusSelected();
+      },appliedSection === 'displays' ? 450 : 0);
+    },650);
+  }
+  root.addEventListener('click',event=>{
+    const tab=event.target.closest('[data-section]');
+    const row=event.target.closest('[data-device]');
+    if(tab) {
+      section=tab.dataset.section;selected=current[section];
+      renderList();icons();
+    }
+    if(row) choose(Number(row.dataset.device));
+  });
+  root.addEventListener('dblclick',event=>{if(event.target.closest('[data-device]')) apply();});
+  root.addEventListener('keydown',event=>{
+    if(event.target.closest('[data-device]')) {
+      if(event.key === 'ArrowDown' || event.key === 'ArrowUp') {event.preventDefault();choose((selected+(event.key === 'ArrowDown' ? 1 : -1)+devices[section].length)%devices[section].length);}
+      if(event.key === 'Enter') {event.preventDefault();apply();}
+    }
+    const tab=event.target.closest('[data-section]');
+    if(tab && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {event.preventDefault();section=section === 'sound' ? 'displays' : 'sound';selected=current[section];renderList();icons();root.querySelector('[data-section="'+section+'"]').focus();}
+  });
+  renderList();renderDesign();
+  if(globalThis.Tweak) {
+    const tweak=new Tweak({container:root,onChange:renderDesign});
+    tweak.addToggle(design,'details',{label:'Детали устройств'});
+    tweak.addSlider(design,'rowHeight',{label:'Высота строк',min:64,max:88,step:4,unit:'px'});
+    tweak.addSelect(design,'status',{label:'Состояние',options:[{label:'Готово',value:'ready'},{label:'Переключение',value:'switching'},{label:'Сохранение',value:'saving'},{label:'Ошибка',value:'error'}]});
+  }
+})();
+</script>

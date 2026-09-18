@@ -1,0 +1,132 @@
+<div id="ps5-switcher-options" aria-label="Варианты интерфейса в стиле PS5">
+  <section class="ps-proposal" data-look="control" aria-label="Центр управления">
+    <div class="ps-caption"><span>01 · Центр управления</span><span class="ps-recommend">Рекомендую</span></div>
+    <div class="ps-window"></div>
+  </section>
+  <section class="ps-proposal" data-look="cards" aria-label="Карточки устройств">
+    <div class="ps-caption"><span>02 · Карточки устройств</span></div>
+    <div class="ps-window"></div>
+  </section>
+  <section class="ps-proposal" data-look="settings" aria-label="Список настроек">
+    <div class="ps-caption"><span>03 · Список настроек</span></div>
+    <div class="ps-window"></div>
+  </section>
+</div>
+<style>
+#ps5-switcher-options { --ps-surface:light-dark(#eef1f5,#181c24); --ps-ink:light-dark(#18202b,#f2f4f8); --ps-muted:light-dark(#566172,#aeb7c5); --ps-raised:light-dark(#e2e7ef,#252b36); --ps-line:light-dark(#c1c9d4,#3d4553); --ps-focus:light-dark(#23354f,#f4f7fd); --ps-glow:light-dark(#dfe8f7,#263854); --ps-contrast:light-dark(#ffffff,#171d27); --ps-spacing:18px; font-family:"Segoe UI",system-ui,sans-serif; font-size:14px; line-height:1.4; color:var(--ps-ink); width:100%; }
+#ps5-switcher-options * { box-sizing:border-box; }
+#ps5-switcher-options .ps-proposal { max-width:480px; margin:0 auto 32px; }
+#ps5-switcher-options .ps-proposal:last-child { margin-bottom:0; }
+#ps5-switcher-options .ps-caption { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; color:light-dark(#354154,#d0d6e1); }
+#ps5-switcher-options .ps-recommend { font-size:12px; color:light-dark(#486087,#a5bbdc); }
+#ps5-switcher-options .ps-window { background:var(--ps-surface); border-radius:12px; padding:24px; overflow-wrap:anywhere; }
+#ps5-switcher-options [data-look="control"] .ps-window { background:radial-gradient(ellipse at 90% 0%,var(--ps-glow),var(--ps-surface) 66%); }
+#ps5-switcher-options .ps-tabs { display:flex; gap:26px; border-bottom:1px solid var(--ps-line); margin-bottom:22px; }
+#ps5-switcher-options button { font:inherit; cursor:pointer; color:inherit; }
+#ps5-switcher-options .ps-tab { background:transparent; border:0; padding:0 0 12px; display:flex; gap:9px; align-items:center; color:var(--ps-muted); position:relative; min-height:44px; }
+#ps5-switcher-options .ps-tab[aria-selected="true"] { color:var(--ps-ink); }
+#ps5-switcher-options .ps-tab[aria-selected="true"]::after { content:""; position:absolute; inset:auto 0 -1px; height:2px; background:var(--ps-focus); }
+#ps5-switcher-options .ps-label { color:var(--ps-muted); font-size:12px; margin-bottom:12px; }
+#ps5-switcher-options .ps-list { display:grid; gap:8px; }
+#ps5-switcher-options .ps-device { background:transparent; border:2px solid transparent; border-radius:6px; padding:var(--ps-spacing) 14px; min-height:72px; width:100%; text-align:left; display:grid; grid-template-columns:22px minmax(0,1fr) auto; align-items:center; gap:12px; }
+#ps5-switcher-options .ps-device[aria-pressed="true"] { border-color:var(--ps-focus); background:var(--ps-raised); }
+#ps5-switcher-options .ps-device:hover { background:var(--ps-raised); }
+#ps5-switcher-options .ps-copy { display:grid; gap:4px; min-width:0; }
+#ps5-switcher-options .ps-name { font-weight:500; }
+#ps5-switcher-options .ps-detail { font-size:12px; color:var(--ps-muted); }
+#ps5-switcher-options .ps-current { font-size:12px; color:var(--ps-muted); }
+#ps5-switcher-options .ps-status { margin-top:26px; min-height:20px; color:var(--ps-muted); font-size:12px; }
+#ps5-switcher-options .ps-actionline { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; margin-top:16px; font-size:12px; }
+#ps5-switcher-options .ps-connected { color:var(--ps-muted); display:flex; align-items:center; gap:7px; }
+#ps5-switcher-options .ps-hint { display:inline-flex; align-items:center; gap:7px; }
+#ps5-switcher-options .ps-key { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 4px; border:1px solid var(--ps-muted); border-radius:50%; color:var(--ps-ink); font-size:12px; }
+#ps5-switcher-options .ps-keywide { border-radius:4px; }
+#ps5-switcher-options .ps-footer { margin-top:20px; border-top:1px solid var(--ps-line); padding-top:16px; display:flex; flex-wrap:wrap; gap:12px 20px; font-size:12px; color:var(--ps-muted); }
+#ps5-switcher-options .ps-footer b { color:var(--ps-ink); font-weight:500; }
+#ps5-switcher-options .ps-hero { display:none; }
+#ps5-switcher-options [data-look="cards"] .ps-window { background:radial-gradient(ellipse at 0% 0%,var(--ps-glow),var(--ps-surface) 75%); padding-top:20px; }
+#ps5-switcher-options [data-look="cards"] .ps-tabs { border-bottom:0; margin-bottom:18px; }
+#ps5-switcher-options [data-look="cards"] .ps-tab[aria-selected="true"]::after { display:none; }
+#ps5-switcher-options [data-look="cards"] .ps-tab { font-size:16px; padding-bottom:0; }
+#ps5-switcher-options [data-look="cards"] .ps-label { margin-bottom:14px; }
+#ps5-switcher-options [data-look="cards"] .ps-list { grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+#ps5-switcher-options [data-look="cards"] .ps-device { display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; gap:20px; min-height:134px; padding:16px; background:var(--ps-raised); border-radius:10px; }
+#ps5-switcher-options [data-look="cards"] .ps-device .ps-icon { width:28px; height:28px; }
+#ps5-switcher-options [data-look="cards"] .ps-device .ps-detail { display:none; }
+#ps5-switcher-options [data-look="cards"] .ps-current { font-size:12px; }
+#ps5-switcher-options [data-look="cards"] .ps-hero { display:grid; gap:4px; margin-top:20px; }
+#ps5-switcher-options [data-look="cards"] .ps-hero .ps-name { font-size:20px; font-weight:400; }
+#ps5-switcher-options [data-look="cards"] .ps-status { margin-top:20px; }
+#ps5-switcher-options [data-look="settings"] .ps-window { --ps-surface:light-dark(#f0f1f2,#1b1d20); --ps-raised:light-dark(#1c2531,#e7ebf2); --ps-muted:light-dark(#585f6b,#b2b7c0); border-radius:3px; }
+#ps5-switcher-options [data-look="settings"] .ps-tabs { gap:32px; margin-bottom:20px; }
+#ps5-switcher-options [data-look="settings"] .ps-list { gap:0; }
+#ps5-switcher-options [data-look="settings"] .ps-device { border-radius:0; border:0; padding:var(--ps-spacing) 12px; border-bottom:1px solid var(--ps-line); }
+#ps5-switcher-options [data-look="settings"] .ps-device[aria-pressed="true"] { color:var(--ps-contrast); }
+#ps5-switcher-options [data-look="settings"] .ps-device[aria-pressed="true"] .ps-detail,
+#ps5-switcher-options [data-look="settings"] .ps-device[aria-pressed="true"] .ps-current { color:var(--ps-contrast); opacity:.8; }
+#ps5-switcher-options [data-look="settings"] .ps-device:not([aria-pressed="true"]):hover { background:var(--ps-surface); }
+#ps5-switcher-options .ps-icon { flex-shrink:0; width:18px; height:18px; }
+@media(max-width:380px) {
+  #ps5-switcher-options .ps-window { padding:18px; }
+  #ps5-switcher-options .ps-device { grid-template-columns:18px minmax(0,1fr); gap:10px; padding:var(--ps-spacing) 10px; }
+  #ps5-switcher-options .ps-current { grid-column:2; }
+  #ps5-switcher-options [data-look="cards"] .ps-device { padding:12px; }
+  #ps5-switcher-options .ps-footer { gap:10px 14px; }
+}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('ps5-switcher-options');
+  const preferences = { density:'comfortable', appearance:'auto' };
+  const data = {
+    sound:[{name:'Динамики',detail:'fifine Microphone',icon:'volume-2'},{name:'G27U',detail:'NVIDIA High Definition Audio',icon:'monitor'}],
+    displays:[{name:'Экран 1',detail:'2560 × 1440 · 120 Гц',icon:'monitor'},{name:'Экран 2',detail:'3840 × 2160 · 120 Гц',icon:'monitor'}]
+  };
+  const components = [...root.querySelectorAll('.ps-proposal')].map((element,index) => ({element,index,tab:'sound',selected:0,current:{sound:1,displays:1},message:''}));
+  function icon(name) { return '<i class="ps-icon" data-lucide="'+name+'" aria-hidden="true"></i>'; }
+  function render(component) {
+    const {element,index,tab,selected,current} = component;
+    const isSound = tab === 'sound';
+    const selectedDevice = data[tab][selected];
+    const panelId = 'ps-panel-'+index;
+    element.querySelector('.ps-window').innerHTML =
+      '<div class="ps-tabs" role="tablist" aria-label="Раздел">'+
+      ['sound','displays'].map((key) => '<button type="button" class="ps-tab" role="tab" id="ps-tab-'+index+'-'+key+'" aria-controls="'+panelId+'" aria-selected="'+(tab === key)+'" data-tab="'+key+'">'+icon(key === 'sound' ? 'volume-2' : 'monitor')+(key === 'sound' ? 'Звук' : 'Мониторы')+'</button>').join('')+'</div>'+
+      '<div role="tabpanel" id="'+panelId+'" aria-labelledby="ps-tab-'+index+'-'+tab+'">'+
+      '<div class="ps-label">'+(isSound ? 'Устройство вывода' : 'Главный монитор')+'</div>'+
+      '<div class="ps-list" role="group" aria-label="'+(isSound ? 'Устройства вывода' : 'Мониторы')+'">'+
+      data[tab].map((device,i) => '<button type="button" class="ps-device" data-device="'+i+'" aria-pressed="'+(selected === i)+'" aria-label="'+device.name+', '+device.detail+(current[tab] === i ? ', используется' : '')+'">'+icon(device.icon)+'<span class="ps-copy"><span class="ps-name">'+device.name+'</span><span class="ps-detail">'+device.detail+'</span></span>'+(current[tab] === i ? '<span class="ps-current">'+(isSound ? 'Используется' : 'Главный')+'</span>' : '')+'</button>').join('')+'</div>'+
+      '<div class="ps-hero"><span class="ps-name">'+selectedDevice.name+'</span><span class="ps-detail">'+selectedDevice.detail+'</span></div></div>'+
+      '<div class="ps-status" role="status" aria-live="polite">'+(component.message || (isSound ? 'Выход звука по умолчанию в Windows' : 'Расположение экранов сохранится'))+'</div>'+
+      '<div class="ps-actionline"><span class="ps-connected">'+icon('gamepad-2')+'Геймпад подключён</span><span class="ps-hint"><span class="ps-key">A</span><span> / Enter · Применить</span></span></div>'+
+      '<div class="ps-footer"><span><b>↑ ↓</b> Выбор</span><span><b>LB / RB</b> Раздел</span><span class="ps-hint"><span class="ps-key">B</span> / Esc · Закрыть</span></div>';
+  }
+  function icons() { if(globalThis.lucide) globalThis.lucide.createIcons({attrs:{width:18,height:18}}); }
+  function apply(component) { component.current[component.tab] = component.selected; component.message = 'Готово: '+data[component.tab][component.selected].name; render(component); icons(); }
+  components.forEach(component => {
+    render(component);
+    component.element.addEventListener('click',event => {
+      const tab = event.target.closest('[data-tab]');
+      const device = event.target.closest('[data-device]');
+      if(tab) { component.tab=tab.dataset.tab; component.selected=component.current[component.tab]; component.message=''; render(component); icons(); component.element.querySelector('[data-tab="'+component.tab+'"]').focus(); }
+      if(device) { component.selected=Number(device.dataset.device); render(component); icons(); component.element.querySelector('[data-device="'+component.selected+'"]').focus(); }
+    });
+    component.element.addEventListener('dblclick',event => { if(event.target.closest('[data-device]')) apply(component); });
+    component.element.addEventListener('keydown',event => {
+      if(!event.target.closest('[data-device]')) return;
+      if(event.key === 'Enter') { event.preventDefault(); apply(component); component.element.querySelector('[data-device="'+component.selected+'"]').focus(); }
+      if(event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); component.selected=(component.selected+(event.key === 'ArrowDown' ? 1 : -1)+data[component.tab].length)%data[component.tab].length; render(component); icons(); component.element.querySelector('[data-device="'+component.selected+'"]').focus(); }
+    });
+  });
+  function updateDesign() {
+    root.style.colorScheme=preferences.appearance === 'auto' ? 'inherit' : preferences.appearance;
+    root.style.setProperty('--ps-spacing',preferences.density === 'compact' ? '12px' : '18px');
+  }
+  updateDesign();
+  if(globalThis.Tweak) {
+    const tweak=new Tweak({container:root,onChange:updateDesign});
+    tweak.addSelect(preferences,'appearance',{label:'Оформление',options:[{label:'Как в приложении',value:'auto'},{label:'Тёмное',value:'dark'},{label:'Светлое',value:'light'}]});
+    tweak.addSelect(preferences,'density',{label:'Плотность',options:[{label:'Свободная',value:'comfortable'},{label:'Компактная',value:'compact'}]});
+  }
+})();
+</script>
