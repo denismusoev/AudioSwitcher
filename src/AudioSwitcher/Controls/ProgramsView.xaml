@@ -4,25 +4,37 @@
       <Setter Property="AutomationProperties.Name" Value="{Binding DisplayName}"/>
     </Style>
     <Style x:Key="ModalChoice" TargetType="ListBoxItem" BasedOn="{StaticResource NormalChoice}">
-      <Setter Property="MinHeight" Value="48"/><Setter Property="Padding" Value="12,8"/>
+      <Setter Property="MinHeight" Value="44"/><Setter Property="Padding" Value="12,8"/>
+    </Style>
+    <Style x:Key="ProgramRecord" TargetType="ListBoxItem" BasedOn="{StaticResource NormalChoice}">
+      <Setter Property="AutomationProperties.HelpText" Value="Нажмите на запись или используйте A / Enter, чтобы открыть действия"/>
     </Style>
     <Style x:Key="ProgramModeTab" TargetType="Button" BasedOn="{StaticResource SectionTab}">
       <Setter Property="FontSize" Value="16"/><Setter Property="MinHeight" Value="36"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/></ControlTemplate></Setter.Value></Setter>
-      <Style.Triggers>
-        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource Text}"/></Trigger>
-        <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="{StaticResource Text}"/></Trigger>
-      </Style.Triggers>
     </Style>
     <DataTemplate x:Key="ProgramRow">
-      <StackPanel><TextBlock Text="{Binding DisplayName}" FontSize="16" TextWrapping="Wrap"/><TextBlock Text="{Binding DisplayDetails}" FontSize="12" Foreground="{StaticResource MutedText}" Margin="0,4,0,0" TextWrapping="Wrap"/></StackPanel>
+      <Grid ToolTip="Нажмите, чтобы открыть действия">
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel Margin="0,0,12,0"><TextBlock Text="{Binding DisplayName}" FontSize="16" TextWrapping="Wrap"/><TextBlock Text="{Binding DisplayDetails}" ToolTip="{Binding DisplayDetails}" FontSize="12" Foreground="{StaticResource MutedText}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+        <TextBlock Grid.Column="1" Text="›" FontSize="24" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+      </Grid>
+    </DataTemplate>
+    <DataTemplate x:Key="ActionRow">
+      <StackPanel>
+        <TextBlock Text="{Binding DisplayName}" FontSize="16" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding DisplayDetails}" FontSize="12" Foreground="{StaticResource MutedText}" Margin="0,4,0,0" TextWrapping="Wrap">
+          <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding DisplayDetails}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+        </TextBlock>
+      </StackPanel>
     </DataTemplate>
     <Style x:Key="ProgramList" TargetType="ListBox">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden"/>
+      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
       <Setter Property="ScrollViewer.CanContentScroll" Value="False"/>
       <Setter Property="ItemTemplate" Value="{StaticResource ProgramRow}"/>
-      <Setter Property="ItemContainerStyle" Value="{StaticResource NormalChoice}"/>
+      <Setter Property="ItemContainerStyle" Value="{StaticResource ProgramRecord}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ScrollViewer Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer></ControlTemplate></Setter.Value></Setter>
     </Style>
   </UserControl.Resources>
   <Grid x:Name="ViewRoot">
@@ -38,17 +50,20 @@
         <TextBlock x:Name="EmptyPrograms" Text="Нет запущенных приложений" Margin="12" TextWrapping="Wrap" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False"/>
       </Grid>
       <WrapPanel x:Name="CatalogTools" Grid.Row="2" Margin="0,10,0,0" Visibility="Collapsed">
-        <Button x:Name="AddProgram" Content="Добавить программу" Click="AddClick" FontSize="12" AutomationProperties.Name="Добавить программу"/>
+        <Button x:Name="AddProgram" Content="+ Добавить программу" Click="AddClick" FontSize="14" MinHeight="36" AutomationProperties.Name="Добавить программу"/>
         <Button x:Name="ResetCatalog" Content="Сбросить каталог" Click="ResetClick" FontSize="12" Visibility="Collapsed" AutomationProperties.Name="Сбросить каталог с резервной копией"/>
       </WrapPanel>
     </Grid>
-    <Grid x:Name="PanelSurface" Visibility="Collapsed">
-      <Border x:Name="PanelCard">
+    <Grid x:Name="PanelSurface" Visibility="Collapsed" Background="{StaticResource ModalBackdrop}" KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.ControlTabNavigation="Cycle">
+      <Border x:Name="PanelCard" Background="{StaticResource DialogSurface}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4" VerticalAlignment="Center">
        <Grid>
-      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-      <TextBlock x:Name="PanelTitle" FontSize="18" TextWrapping="Wrap" Margin="12,8,12,8"/>
-      <TextBlock x:Name="PanelDescription" Grid.Row="1" FontSize="12" Foreground="{StaticResource MutedText}" TextWrapping="Wrap" Margin="12,0,12,14"/>
-      <ListBox x:Name="ProgramActions" Grid.Row="2" Style="{StaticResource ProgramList}" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Действия с выбранной программой"/>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <TextBlock x:Name="PanelTitle" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" Margin="12,8,12,8"/>
+      <TextBlock x:Name="PanelDescription" Grid.Row="1" FontSize="12" Foreground="{StaticResource MutedText}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="48" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" Margin="12,0,12,12"/>
+      <ListBox x:Name="ProgramActions" Grid.Row="2" Style="{StaticResource ProgramList}" ItemTemplate="{StaticResource ActionRow}" ItemContainerStyle="{StaticResource ModalChoice}" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Действия с выбранной программой"/>
+      <ScrollViewer Grid.Row="3" Style="{StaticResource DeviceScrollViewer}" MaxHeight="64" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <TextBlock x:Name="PanelFeedback" FontSize="13" Foreground="{StaticResource ErrorText}" TextWrapping="Wrap" Margin="12,8,12,8" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
+      </ScrollViewer>
        </Grid>
       </Border>
     </Grid>

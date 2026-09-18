@@ -160,12 +160,17 @@ internal static class Program
                         list.SelectedIndex = 0;
                         await programs.ConfirmAsync();
                         if (programs.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Actions did not open");
+                        if (((Button)window.FindName("ProgramsTab")).IsEnabled || ((FrameworkElement)window.FindName("SectionHint")).IsVisible)
+                            throw new Exception("Modal must block section tabs and hide unavailable section navigation");
                         var actions = (ListBox)programs.FindName("ProgramActions");
                         actions.SelectedIndex = 1; await programs.ConfirmAsync();
                         if (programs.Navigation.Panel != ProgramPanel.ConfirmTermination || actions.SelectedIndex != 0) throw new Exception("Termination confirmation must default to Cancel");
                         await programs.ConfirmAsync();
                         if (programs.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Default confirmation did not cancel");
                         if (!programs.Back() || programs.Navigation.Panel != ProgramPanel.List) throw new Exception("Back must return to list");
+                        window.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                        if (!list.IsKeyboardFocusWithin || !((Button)window.FindName("ProgramsTab")).IsEnabled)
+                            throw new Exception("Back must restore list focus and section navigation");
                         programs.SelectMode(true);
                         if (((ListBox)programs.FindName("LaunchList")).Visibility != Visibility.Visible || list.Visibility != Visibility.Collapsed) throw new Exception("Catalog is not separate");
                         programs.SelectMode(false); await programs.ConfirmAsync();
@@ -178,6 +183,75 @@ internal static class Program
                         programs.Navigation.Panel = ProgramPanel.List;
                         switchSection.Invoke(window, [AppSection.Audio]);
                     }
+                });
+                await Check("Failed move preserves actions and presents a retryable inline result", async () => {
+                    var switchSection = typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var programs = (ProgramsView)window.FindName("Programs");
+                    try
+                    {
+                        switchSection.Invoke(window, [AppSection.Programs]); programs.SelectMode(false);
+                        await Task.Delay(500);
+                        var list = (ListBox)programs.FindName("RunningList");
+                        // Moving this test process is explicitly unsupported; no other process is touched.
+                        list.ItemsSource = new[] { new RunningProgram(new(Environment.ProcessId, 1), "Own process", new[] { new WindowTarget(new(Environment.ProcessId, 1), 0, "Fixture", "Экран 1", false) }) };
+                        list.SelectedIndex = 0; await programs.ConfirmAsync();
+                        await programs.ConfirmAsync();
+                        if (programs.Navigation.Panel != ProgramPanel.Actions || programs.IsBusy) throw new Exception("Failure must retain the selected action for retry");
+                        if (programs.FindName("PanelFeedback") is not TextBlock feedback || !feedback.IsVisible || string.IsNullOrWhiteSpace(feedback.Text))
+                            throw new Exception("Failure must be readable inside the modal");
+                        await programs.ConfirmAsync();
+                        if (programs.Navigation.Panel != ProgramPanel.Actions || !programs.Back()) throw new Exception("Retry and Back must remain available");
+                    }
+                    finally { programs.Back(); switchSection.Invoke(window, [AppSection.Audio]); }
+                });
+                await Check("Window choices remain reachable with long titles at minimum and normal window sizes", async () => {
+                    var switchSection = typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var programs = (ProgramsView)window.FindName("Programs");
+                    try
+                    {
+                        switchSection.Invoke(window, [AppSection.Programs]); programs.SelectMode(false); await Task.Delay(500);
+                        foreach (var size in new[] { (340, 400), (480, 550) })
+                        {
+                            window.Width = size.Item1; window.Height = size.Item2;
+                            var list = (ListBox)programs.FindName("RunningList");
+                            list.ItemsSource = new[] { new RunningProgram(new(Environment.ProcessId, 1), string.Join(" ", Enumerable.Repeat("Название программы", 20)), Enumerable.Range(0, 8).Select(i => new WindowTarget(new(Environment.ProcessId, 1), i + 1, $"Окно {i + 1}", "Экран 2 · Главный", false)).ToArray()) };
+                            list.SelectedIndex = 0; await programs.ConfirmAsync(); await programs.ConfirmAsync();
+                            if (programs.Navigation.Panel != ProgramPanel.Windows) throw new Exception("Window chooser missing");
+                            var actions = (ListBox)programs.FindName("ProgramActions");
+                            for (int i = 0; i < 8; i++) { programs.Move(1); await Dispatcher.Yield(DispatcherPriority.ContextIdle); }
+                            window.UpdateLayout();
+                            var presenter = Child<ScrollContentPresenter>(actions)!;
+                            var row = (ListBoxItem)actions.ItemContainerGenerator.ContainerFromIndex(7);
+                            double top = row.TranslatePoint(new Point(), presenter).Y;
+                            if (presenter.ActualHeight < 44 || top < -0.5 || top + row.ActualHeight > presenter.ActualHeight + 0.5)
+                                throw new Exception($"Final window is clipped at {size}: top={top}, viewport={presenter.ActualHeight}");
+                            if (!((TextBlock)window.FindName("BackHint")).IsVisible) throw new Exception("Back control is obscured by the modal");
+                            if (args.Contains("--capture-programs"))
+                            {
+                                var bitmap = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth), (int)Math.Ceiling(window.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+                                bitmap.Render(window); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                                using var output = File.Create(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, $"../../../../../artifacts/ui-ux-window-choices-{size.Item1}.png"))); encoder.Save(output);
+                            }
+                            programs.Back(); programs.Back();
+                        }
+                    }
+                    finally { programs.Back(); programs.Back(); switchSection.Invoke(window, [AppSection.Audio]); }
+                });
+                await Check("Editor fields have associated labels and retain visible keyboard focus", async () => {
+                    var editor = new LaunchEntryDialog(null, _ => Task.CompletedTask) { Owner = window };
+                    try
+                    {
+                        editor.Show(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                        foreach (var name in new[] { "EntryName", "EntryTarget", "EntryArguments", "EntryDirectory" })
+                        {
+                            var input = (TextBox)editor.FindName(name);
+                            var label = System.Windows.Automation.AutomationProperties.GetLabeledBy(input) as Label;
+                            if (label?.Target != input) throw new Exception($"Unassociated field label: {name}");
+                            input.Focus(); editor.UpdateLayout();
+                            if (!input.IsKeyboardFocused || input.BorderBrush != app.FindResource("Accent")) throw new Exception($"Missing focus indicator: {name}");
+                        }
+                    }
+                    finally { editor.Close(); }
                 });
                 await Check("Single click opens catalog modal actions; repeated edits use latest saved values", async () => {
                     var directory = Path.Combine(Path.GetTempPath(), "AudioSwitcher-EditorChecks-" + Guid.NewGuid());
@@ -231,7 +305,7 @@ internal static class Program
                         }
                         string? launchStatus = null; view.StatusChanged += (text, _) => launchStatus = text;
                         await view.ConfirmAsync();
-                        if (launchStatus != "Файл программы или ярлыка не найден." || ((TextBlock)view.FindName("PanelDescription")).Text != launchStatus || view.Navigation.Panel != ProgramPanel.Actions || ((Grid)view.FindName("ListsSurface")).IsEnabled)
+                        if (launchStatus != "Файл программы или ярлыка не найден." || ((TextBlock)view.FindName("PanelFeedback")).Text != launchStatus || ((TextBlock)view.FindName("PanelDescription")).Text != "Выберите действие" || view.Navigation.Panel != ProgramPanel.Actions || ((Grid)view.FindName("ListsSurface")).IsEnabled)
                             throw new Exception("Launch action did not validate its target or released modal blocking");
                         // The actual test EXE is used only for editor validation, never launched here.
                         menu.SelectedIndex = 2;
@@ -291,7 +365,8 @@ internal static class Program
                         var actions = (ListBox)programs.FindName("ProgramActions");
                         window.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
                         ((ListBoxItem)actions.ItemContainerGenerator.ContainerFromIndex(0)).RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = Mouse.PreviewMouseUpEvent });
-                        for (int i = 0; i < 50 && programs.IsBusy; i++) await Task.Delay(100);
+                        // Await the complete UI transition, not just the native worker finishing.
+                        for (int i = 0; i < 50 && (programs.IsBusy || programs.Navigation.Panel != ProgramPanel.List); i++) await Task.Delay(100);
                         if (programs.Navigation.Panel != ProgramPanel.List || MonitorFromWindow(fixtureWindow, 2) != MonitorFromPoint(new PointNative(0, 0), 1)) throw new Exception("Single-click move did not complete: " + ((TextBlock)window.FindName("Status")).Text);
                         if (args.Contains("--capture-programs"))
                         {

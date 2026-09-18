@@ -10,7 +10,7 @@ public sealed record WindowTarget(ProcessIdentity Process, nint Handle, string T
 public sealed record RunningProgram(ProcessIdentity Identity, string Name, IReadOnlyList<WindowTarget> Windows)
 {
     public string DisplayName => Name;
-    public string DisplayDetails => Windows.Count == 1 ? Windows[0].DisplayDetails : $"Окон: {Windows.Count} · {string.Join(", ", Windows.Select(w => w.Screen).Distinct())}";
+    public string DisplayDetails => Windows.Count == 1 ? Windows[0].DisplayDetails : $"Окна: {Windows.Count} · {string.Join(", ", Windows.Select(w => w.Screen).Distinct())}" + (Windows.Any(w => w.NotResponding) ? " · Не отвечает" : "");
 }
 public enum ProgramResultCode { Success, AlreadyExited, TargetChanged, AccessDenied, TimedOut, Unsupported, Failed }
 public sealed record ProgramResult(ProgramResultCode Code, string Message, string? Details = null)

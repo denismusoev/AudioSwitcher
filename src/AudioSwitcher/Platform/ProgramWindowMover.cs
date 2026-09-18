@@ -95,10 +95,10 @@ public sealed class ProgramWindowMover
             if (timeout.ElapsedMilliseconds >= 600)
             {
                 if (foreground != target.Handle && ProgramNative.GetForegroundWindow() == target.Handle) continue;
-                return new(ProgramResultCode.Success, "Окно перемещено на главный экран");
+                return new(ProgramResultCode.Success, $"Окно перемещено на главный экран ({destination.Device.Replace("\\\\.\\DISPLAY", "Экран ")})");
             }
         }
-        return new(ProgramResultCode.TimedOut, "Не удалось перенести окно. Попробуйте оконный режим без рамки",
+        return new(ProgramResultCode.TimedOut, "Не удалось подтвердить перенос. Повторите попытку или включите оконный режим без рамки",
             "Окно не подтвердило размещение в течение 2 секунд; игра может выбирать экран самостоятельно или ограничивать размер.");
     }
 }

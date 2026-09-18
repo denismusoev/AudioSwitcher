@@ -6,32 +6,52 @@
     <SolidColorBrush x:Key="Line" Color="#2A2C31"/>
     <SolidColorBrush x:Key="Accent" Color="#C8C6C2"/>
     <SolidColorBrush x:Key="SelectedSurface" Color="#1B1D22"/>
+    <SolidColorBrush x:Key="HoverSurface" Color="#22272F"/>
+    <SolidColorBrush x:Key="DialogSurface" Color="#222428"/>
+    <SolidColorBrush x:Key="ModalBackdrop" Color="#D9101114"/>
+    <SolidColorBrush x:Key="InputSurface" Color="#17181C"/>
+    <SolidColorBrush x:Key="ErrorText" Color="#E8B9B3"/>
+    <Style x:Key="FormLabel" TargetType="Label">
+      <Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style x:Key="FormInput" TargetType="TextBox">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Background" Value="{StaticResource InputSurface}"/><Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="CaretBrush" Value="{StaticResource Text}"/>
+      <Setter Property="Padding" Value="8"/><Setter Property="FontSize" Value="14"/><Setter Property="MinHeight" Value="36"/>
+      <Setter Property="Margin" Value="0,4,0,16"/>
+      <Style.Triggers><Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger></Style.Triggers>
+    </Style>
     <Style TargetType="Button">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Padding" Value="8,7"/>
       <Setter Property="FontSize" Value="15"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
         <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#22272F"/></Trigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource HoverSurface}"/></Trigger>
           <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
           <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.5"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="SectionTab" TargetType="Button">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Foreground" Value="{StaticResource MutedText}"/><Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderBrush" Value="Transparent"/>
       <Setter Property="Padding" Value="0"/><Setter Property="FontSize" Value="22"/><Setter Property="FontWeight" Value="Normal"/><Setter Property="MinHeight" Value="44"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="TabLine" BorderThickness="1" CornerRadius="3" BorderBrush="{TemplateBinding BorderBrush}" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center"/></Border>
+        <Border x:Name="TabLine" BorderThickness="0,0,0,1" BorderBrush="{TemplateBinding BorderBrush}" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center"/></Border>
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource Text}"/></Trigger>
           <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="TabLine" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="ListBoxItem">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="Margin" Value="0,0,0,4"/><Setter Property="Padding" Value="16,14"/><Setter Property="MinHeight" Value="72"/><Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
@@ -39,6 +59,7 @@
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource SelectedSurface}"/></Trigger>
           <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource SelectedSurface}"/><Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+          <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Text}"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>

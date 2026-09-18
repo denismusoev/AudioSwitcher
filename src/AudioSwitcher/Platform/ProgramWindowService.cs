@@ -41,7 +41,7 @@ public sealed class ProgramWindowService
                 var title = new StringBuilder(1024); ProgramNative.GetWindowText(window, title, title.Capacity);
                 string name = string.IsNullOrWhiteSpace(title.ToString()) ? Path.GetFileNameWithoutExtension(process.Image) : title.ToString();
                 var monitor = ProgramNative.Monitor(ProgramNative.MonitorFromWindow(window, 2));
-                string screen = monitor.Device.Replace("\\\\.\\", "") + ((monitor.Flags & 1) != 0 ? " · Главный" : "");
+                string screen = monitor.Device.Replace("\\\\.\\DISPLAY", "Экран ") + ((monitor.Flags & 1) != 0 ? " · Главный" : "");
                 if (!groups.TryGetValue(process.Identity, out var group))
                 {
                     if (!names.TryGetValue(process.Image, out string? applicationName))

@@ -6,7 +6,7 @@
   <Border Padding="20,24,20,20" CornerRadius="8">
     <Grid>
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-      <Grid Background="Transparent" MouseLeftButtonDown="DragWindow" Margin="0,0,0,22" MinHeight="44">
+      <Grid Background="Transparent" MouseLeftButtonDown="DragWindow" Margin="0,0,0,16" MinHeight="44">
         <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
           <Button x:Name="AudioTab" Style="{StaticResource SectionTab}" Click="AudioClick" Margin="0,0,14,0" Content="Звук" AutomationProperties.Name="Звук"/>
           <Button x:Name="DisplayTab" Style="{StaticResource SectionTab}" Click="DisplayClick" Margin="0,0,14,0" Content="Мониторы" AutomationProperties.Name="Мониторы"/>
@@ -14,7 +14,7 @@
         </StackPanel>
       </Grid>
       <Grid x:Name="DeviceSurface" Grid.Row="1">
-        <ListBox x:Name="Devices" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" MouseDoubleClick="ApplyDoubleClick" AutomationProperties.Name="Устройства вывода">
+        <ListBox x:Name="Devices" Background="Transparent" BorderThickness="0" Padding="0" FocusVisualStyle="{x:Null}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" MouseDoubleClick="ApplyDoubleClick" AutomationProperties.Name="Устройства вывода">
           <ListBox.ItemsPanel><ItemsPanelTemplate><controls:DeviceRowsPanel ClipToBounds="True"/></ItemsPanelTemplate></ListBox.ItemsPanel>
           <ListBox.Template><ControlTemplate TargetType="ListBox"><ScrollViewer x:Name="DeviceScroll" Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="True" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer></ControlTemplate></ListBox.Template>
           <ListBox.Resources><Style TargetType="ScrollViewer" BasedOn="{StaticResource DeviceScrollViewer}"/></ListBox.Resources>
@@ -34,26 +34,25 @@
         <TextBlock x:Name="Empty" Text="Нет доступных устройств" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedText}" Visibility="Collapsed"/>
       </Grid>
       <controls:ProgramsView x:Name="Programs" Grid.Row="1" Visibility="Collapsed"/>
-      <Grid Grid.Row="2" Margin="12,32,12,0" MinHeight="24">
-        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <TextBlock x:Name="Status" Foreground="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+      <Grid x:Name="StatusSurface" Grid.Row="2" Margin="12,16,12,0" MinHeight="24">
+        <TextBlock x:Name="Status" Foreground="{StaticResource Text}" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+      </Grid>
+      <Border Grid.Row="3" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Margin="12,16,12,0" Padding="0,12,0,0">
+        <WrapPanel>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,18,8">
           <Border BorderBrush="{StaticResource MutedText}" BorderThickness="1" CornerRadius="9" Width="18" Height="18" Margin="0,0,6,0"><TextBlock Text="A" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
           <TextBlock x:Name="ApplyHint" FontSize="12" VerticalAlignment="Center" Text=" / Enter · Применить" AutomationProperties.Name="A / Enter · Применить"/>
         </StackPanel>
-      </Grid>
-      <Border Grid.Row="3" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Margin="12,22,12,0" Padding="0,16,0,0">
-        <WrapPanel>
-          <TextBlock x:Name="ListHint" FontSize="12" Margin="0,0,22,0" Foreground="{StaticResource MutedText}" Text="X · Список" Visibility="Collapsed"/>
-          <TextBlock FontSize="12" Margin="0,0,22,0" VerticalAlignment="Center"><Run Text="↑ ↓  " Foreground="{StaticResource Text}"/><Run Text="Выбор" Foreground="{StaticResource MutedText}"/></TextBlock>
-          <TextBlock FontSize="12" Margin="0,0,22,0" VerticalAlignment="Center"><Run Text="LB / RB  " Foreground="{StaticResource Text}"/><Run Text="Раздел" Foreground="{StaticResource MutedText}"/></TextBlock>
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <StackPanel x:Name="BackShortcut" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,18,8">
             <Border BorderBrush="{StaticResource MutedText}" BorderThickness="1" CornerRadius="9" Width="18" Height="18" Margin="0,0,6,0"><TextBlock Text="B" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
             <TextBlock x:Name="BackHint" FontSize="12" VerticalAlignment="Center" Foreground="{StaticResource MutedText}" Text=" / Esc · Закрыть"/>
           </StackPanel>
+          <TextBlock x:Name="SelectionHint" FontSize="12" Margin="0,0,18,8" VerticalAlignment="Center"><Run Text="↑ ↓  " Foreground="{StaticResource Text}"/><Run Text="Выбор" Foreground="{StaticResource MutedText}"/></TextBlock>
+          <TextBlock x:Name="ListHint" FontSize="12" Margin="0,0,18,8" Foreground="{StaticResource MutedText}" Text="X · Сменить список" Visibility="Collapsed"/>
+          <TextBlock x:Name="SectionHint" FontSize="12" Margin="0,0,0,8" VerticalAlignment="Center"><Run Text="← → / LB RB  " Foreground="{StaticResource Text}"/><Run Text="Раздел" Foreground="{StaticResource MutedText}"/></TextBlock>
         </WrapPanel>
       </Border>
-      <ContentControl x:Name="ProgramModalHost" Grid.RowSpan="4" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+      <ContentControl x:Name="ProgramModalHost" Grid.Row="1" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
     </Grid>
   </Border>
 </Window>

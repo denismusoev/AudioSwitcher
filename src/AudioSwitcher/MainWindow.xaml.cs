@@ -32,7 +32,7 @@ public partial class MainWindow : Window
         };
         Programs.StatusChanged += (text, details) => { Status.Text = text; Status.ToolTip = details; };
         Programs.ContextChanged += () => { gate.RequireRelease(); UpdateHints(); };
-        Loaded += (_, _) => { FitToWorkArea(); Refresh(); Activate(); Devices.Focus(); padTimer.Start(); refreshTimer.Start(); };
+        Loaded += (_, _) => { FitToWorkArea(); Refresh(); UpdateHints(); Activate(); Devices.Focus(); padTimer.Start(); refreshTimer.Start(); };
         Closed += (_, _) => { padTimer.Stop(); refreshTimer.Stop(); Programs.Leave(); };
         padTimer.Tick += (_, _) => PollPad();
         refreshTimer.Tick += (_, _) => { if (!busy) Refresh(quiet: true); };
@@ -94,16 +94,25 @@ public partial class MainWindow : Window
     }
     private void UpdateHints()
     {
-        string label = showingPrograms ? Programs.ActionHint : "Применить";
+        string label = busy ? "Подождите" : showingPrograms ? Programs.ActionHint : "Применить";
         ApplyHint.Text = $" / Enter · {label}";
         AutomationProperties.SetName(ApplyHint, $"A / Enter · {label}");
         BackHint.Text = showingPrograms && Programs.InPanel ? " / Esc · Назад" : " / Esc · Закрыть";
-        ListHint.Visibility = showingPrograms && !Programs.InPanel ? Visibility.Visible : Visibility.Collapsed;
+        bool available = !busy && !Programs.IsBusy && !Programs.InPanel;
+        AudioTab.IsEnabled = DisplayTab.IsEnabled = ProgramsTab.IsEnabled = available;
+        SectionHint.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        StatusSurface.Visibility = showingPrograms && Programs.InPanel ? Visibility.Collapsed : Visibility.Visible;
+        BackShortcut.Visibility = SelectionHint.Visibility = busy || Programs.IsBusy ? Visibility.Collapsed : Visibility.Visible;
+        ListHint.Visibility = showingPrograms && available ? Visibility.Visible : Visibility.Collapsed;
+        AudioTab.FontWeight = navigation.Section == AppSection.Audio ? FontWeights.SemiBold : FontWeights.Normal;
+        DisplayTab.FontWeight = navigation.Section == AppSection.Displays ? FontWeights.SemiBold : FontWeights.Normal;
+        ProgramsTab.FontWeight = showingPrograms ? FontWeights.SemiBold : FontWeights.Normal;
     }
     private async Task ApplySelected()
     {
         if (busy || Devices.SelectedItem is not DeviceOption selected) return;
         busy = true;
+        UpdateHints();
         bool changeDisplay = showingDisplays;
         Status.Text = changeDisplay ? "Сохранение…" : "Переключение…";
         Status.ToolTip = null;
@@ -125,7 +134,7 @@ public partial class MainWindow : Window
             Status.Text = $"Готово: {selected.DisplayName}";
         }
         catch (Exception ex) { Refresh(quiet: true); Status.Text = "Не удалось переключить"; Status.ToolTip = ex.Message; }
-        finally { busy = false; }
+        finally { busy = false; UpdateHints(); }
     }
     private void PollPad()
     {

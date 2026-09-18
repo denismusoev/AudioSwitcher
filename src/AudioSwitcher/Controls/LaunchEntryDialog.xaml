@@ -1,19 +1,20 @@
-<Window x:Class="AudioSwitcher.Controls.LaunchEntryDialog" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Добавить программу" Width="460" Height="530" MinWidth="340" MinHeight="340" WindowStartupLocation="CenterOwner" Background="{StaticResource WindowSurface}" Foreground="{StaticResource Text}" Topmost="True" PreviewKeyDown="DialogKeyDown">
+<Window x:Class="AudioSwitcher.Controls.LaunchEntryDialog" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Добавить программу" Width="460" Height="530" MinWidth="340" MinHeight="340" WindowStartupLocation="CenterOwner" Background="{StaticResource WindowSurface}" Foreground="{StaticResource Text}" FontFamily="Segoe UI" FontSize="14" Topmost="True" PreviewKeyDown="DialogKeyDown">
   <Window.Resources>
-    <Style TargetType="TextBox"><Setter Property="Background" Value="#17181C"/><Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="Padding" Value="8"/><Setter Property="FontSize" Value="14"/><Setter Property="Margin" Value="0,4,0,14"/></Style>
+    <Style TargetType="TextBox" BasedOn="{StaticResource FormInput}"/>
+    <Style TargetType="Label" BasedOn="{StaticResource FormLabel}"/>
   </Window.Resources>
   <Grid Margin="20">
     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <StackPanel>
-        <TextBlock Text="Название"/><TextBox x:Name="EntryName" AutomationProperties.Name="Название программы"/>
-        <TextBlock Text="Программа или ярлык"/>
-        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="EntryTarget" TextChanged="TargetChanged" AutomationProperties.Name="Путь к программе или ярлыку"/><Button Grid.Column="1" Content="Обзор…" Click="BrowseClick" VerticalAlignment="Top" Margin="8,4,0,0"/></Grid>
+        <Label x:Name="NameLabel" Content="_Название" Target="{Binding ElementName=EntryName}"/><TextBox x:Name="EntryName" AutomationProperties.Name="Название программы" AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"/>
+        <Label x:Name="TargetLabel" Content="_Программа или ярлык" Target="{Binding ElementName=EntryTarget}"/>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="EntryTarget" TextChanged="TargetChanged" AutomationProperties.Name="Путь к программе или ярлыку" AutomationProperties.LabeledBy="{Binding ElementName=TargetLabel}"/><Button Grid.Column="1" Content="Обзор…" Click="BrowseClick" AutomationProperties.Name="Выбрать программу или ярлык" VerticalAlignment="Top" MinHeight="36" Margin="8,4,0,0"/></Grid>
         <TextBlock x:Name="ShortcutHint" Text="Параметры запуска задаются в самом ярлыке" FontSize="12" Foreground="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed"/>
-        <StackPanel x:Name="ExecutableOptions"><TextBlock Text="Аргументы (необязательно)"/><TextBox x:Name="EntryArguments" AutomationProperties.Name="Аргументы запуска"/><TextBlock Text="Рабочая папка (необязательно)"/><TextBox x:Name="EntryDirectory" AutomationProperties.Name="Рабочая папка"/></StackPanel>
+        <StackPanel x:Name="ExecutableOptions"><Label x:Name="ArgumentsLabel" Content="_Аргументы (необязательно)" Target="{Binding ElementName=EntryArguments}"/><TextBox x:Name="EntryArguments" AutomationProperties.Name="Аргументы запуска" AutomationProperties.LabeledBy="{Binding ElementName=ArgumentsLabel}"/><Label x:Name="DirectoryLabel" Content="_Рабочая папка (необязательно)" Target="{Binding ElementName=EntryDirectory}"/><TextBox x:Name="EntryDirectory" AutomationProperties.Name="Рабочая папка" AutomationProperties.LabeledBy="{Binding ElementName=DirectoryLabel}"/></StackPanel>
       </StackPanel>
     </ScrollViewer>
-    <TextBlock x:Name="EditorError" Grid.Row="1" Foreground="#E8B9B3" TextWrapping="Wrap" Margin="0,12,0,12" AutomationProperties.LiveSetting="Polite"/>
-    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Отмена" IsCancel="True"/><Button x:Name="SaveEntry" Content="Сохранить" Click="SaveClick" Margin="8,0,0,0" IsDefault="True"/></StackPanel>
+    <TextBlock x:Name="EditorError" Grid.Row="1" Foreground="{StaticResource ErrorText}" TextWrapping="Wrap" Margin="0,12,0,12" AutomationProperties.LiveSetting="Polite"/>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Отмена" IsCancel="True" MinHeight="36" AutomationProperties.Name="Отменить изменения"/><Button x:Name="SaveEntry" Content="Сохранить" Click="SaveClick" Margin="8,0,0,0" IsDefault="True" MinHeight="36" AutomationProperties.Name="Сохранить программу"/></StackPanel>
   </Grid>
 </Window>

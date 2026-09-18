@@ -17,7 +17,7 @@ public partial class LaunchEntryDialog : Window
         InitializeComponent();
         if (entry != null)
         {
-            Title = "Изменить запись"; EntryName.Text = entry.Name; EntryTarget.Text = entry.Target;
+            Title = "Редактировать программу"; EntryName.Text = entry.Name; EntryTarget.Text = entry.Target;
             EntryArguments.Text = entry.Arguments; EntryDirectory.Text = entry.WorkingDirectory;
         }
         Loaded += (_, _) => EntryName.Focus();
