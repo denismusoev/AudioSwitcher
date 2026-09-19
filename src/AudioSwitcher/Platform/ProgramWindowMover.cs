@@ -6,14 +6,14 @@ namespace AudioSwitcher.Platform;
 
 public sealed class ProgramWindowMover
 {
-    public Task<ProgramResult> MoveToPrimaryAsync(WindowTarget target, CancellationToken cancellationToken = default) =>
+    public Task<ProgramResult> MoveToPrimaryAsync(WindowTarget target, CancellationToken cancellationToken = default, bool activate = true) =>
         Task.Run(() => {
             nint previousDpi = ProgramNative.SetThreadDpiAwarenessContext(-4);
-            try { return Move(target, cancellationToken); }
+            try { return Move(target, cancellationToken, activate); }
             finally { if (previousDpi != 0) ProgramNative.SetThreadDpiAwarenessContext(previousDpi); }
         }, cancellationToken);
 
-    private static ProgramResult Move(WindowTarget target, CancellationToken cancellationToken)
+    private static ProgramResult Move(WindowTarget target, CancellationToken cancellationToken, bool activate)
     {
         if (target.Process.Pid == Environment.ProcessId) return new(ProgramResultCode.Unsupported, "Это окно нельзя переместить из списка программ");
         using var process = ProgramNative.OpenProcess(ProgramNative.Query | ProgramNative.Synchronize, false, target.Process.Pid);
@@ -46,6 +46,7 @@ public sealed class ProgramWindowMover
         if (!ProgramNative.WindowMatches(target) || ProgramNative.WaitForSingleObject(process, 0) == 0)
             return new(ProgramResultCode.TargetChanged, "Выбранное окно уже закрыто");
         cancellationToken.ThrowIfCancellationRequested();
+        nint foreground = ProgramNative.GetForegroundWindow();
         if (maximized || minimized)
         {
             // WINDOWPLACEMENT uses workspace coordinates. Account for taskbars at top/left.
@@ -70,6 +71,10 @@ public sealed class ProgramWindowMover
         {
             Thread.Sleep(100);
             cancellationToken.ThrowIfCancellationRequested();
+            // Restoring a maximized window may activate it. In the keep-open
+            // mode, return focus only if this operation activated our target.
+            if (!activate && foreground != 0 && foreground != target.Handle && ProgramNative.GetForegroundWindow() == target.Handle && ProgramNative.IsWindow(foreground))
+                ProgramNative.SetForegroundWindow(foreground);
             if (!ProgramNative.WindowMatches(target) || ProgramNative.WaitForSingleObject(process, 0) == 0)
                 return new(ProgramResultCode.AlreadyExited, "Программа уже закрыта");
             nint currentPrimary = ProgramNative.MonitorFromPoint(new(0, 0), 1);
@@ -89,6 +94,11 @@ public sealed class ProgramWindowMover
             if (timeout.ElapsedMilliseconds >= 600)
             {
                 if (!ProgramNative.WindowMatches(target)) return new(ProgramResultCode.TargetChanged, "Выбранное окно изменилось");
+                if (!activate)
+                {
+                    if (foreground != target.Handle && ProgramNative.GetForegroundWindow() == target.Handle) continue;
+                    return new(ProgramResultCode.Success, "Окно перемещено на главный экран");
+                }
                 ProgramNative.ShowWindowAsync(target.Handle, maximized ? 3 : 5);
                 ProgramNative.SetForegroundWindow(target.Handle);
                 for (int attempt = 0; attempt < 10; attempt++)

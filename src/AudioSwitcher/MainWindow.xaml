@@ -7,9 +7,10 @@
       <Grid.RowDefinitions><RowDefinition Height="64"/><RowDefinition Height="*"/><RowDefinition Height="48"/><RowDefinition Height="24"/></Grid.RowDefinitions>
       <Grid x:Name="SectionHeader" Background="Transparent" Margin="0,0,0,16" Height="48">
         <StackPanel Orientation="Horizontal">
-          <controls:SectionButton x:Name="AudioTab" Style="{StaticResource SectionTab}" Click="AudioClick" Margin="0,0,32,0" Content="Звук" AutomationProperties.Name="Звук"/>
-          <controls:SectionButton x:Name="DisplayTab" Style="{StaticResource SectionTab}" Click="DisplayClick" Margin="0,0,32,0" Content="Мониторы" AutomationProperties.Name="Мониторы"/>
-          <controls:SectionButton x:Name="ProgramsTab" Style="{StaticResource SectionTab}" Click="ProgramsClick" Content="Программы" AutomationProperties.Name="Программы"/>
+          <controls:SectionButton x:Name="AudioTab" Style="{StaticResource SectionTab}" Click="AudioClick" Margin="0,0,24,0" Content="Звук" AutomationProperties.Name="Звук"/>
+          <controls:SectionButton x:Name="DisplayTab" Style="{StaticResource SectionTab}" Click="DisplayClick" Margin="0,0,24,0" Content="Мониторы" AutomationProperties.Name="Мониторы"/>
+          <controls:SectionButton x:Name="ProgramsTab" Style="{StaticResource SectionTab}" Click="ProgramsClick" Margin="0,0,24,0" Content="Программы" AutomationProperties.Name="Программы"/>
+          <controls:SectionButton x:Name="SettingsTab" Style="{StaticResource SectionTab}" Click="SettingsClick" Content="Настройки" AutomationProperties.Name="Настройки"/>
         </StackPanel>
       </Grid>
       <Grid x:Name="DeviceSurface" Grid.Row="1" Grid.RowSpan="2" Margin="0,0,0,20">
@@ -31,6 +32,28 @@
         <TextBlock x:Name="Empty" Text="Нет доступных устройств" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource MutedText}" Visibility="Collapsed"/>
       </Grid>
       <controls:ProgramsView x:Name="Programs" Margin="0,0,0,20" Grid.Row="1" Grid.RowSpan="2" Visibility="Collapsed"/>
+      <Grid x:Name="SettingsSurface" Grid.Row="1" Grid.RowSpan="2" Margin="0,0,0,20" Visibility="Collapsed">
+        <StackPanel VerticalAlignment="Top" Margin="0,12,0,0">
+          <ToggleButton x:Name="MoveBehaviorToggle" FocusVisualStyle="{x:Null}" Checked="MovePreferenceChanged" Unchecked="MovePreferenceChanged" HorizontalContentAlignment="Stretch" Foreground="{DynamicResource Text}" AutomationProperties.Name="Переключаться на приложение и закрывать AudioSwitcher">
+            <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+              <Border x:Name="Attribute" Background="Transparent" BorderBrush="Transparent" BorderThickness="2" CornerRadius="4" Padding="15,14">
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <TextBlock Grid.ColumnSpan="2" Text="После переноса на главный экран" Foreground="{DynamicResource MutedText}" FontSize="{DynamicResource Font16}" Margin="0,0,0,13"/>
+                  <TextBlock Grid.Row="1" Text="Переключаться на приложение" FontSize="{DynamicResource Font22}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,22,0"/>
+                  <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><ContentPresenter VerticalAlignment="Center" Margin="0,0,12,0"/><Border x:Name="SwitchTrack" Width="56" Height="30" BorderThickness="2" BorderBrush="{DynamicResource MutedText}" CornerRadius="15"><Ellipse x:Name="SwitchKnob" Width="18" Height="18" Fill="{DynamicResource MutedText}" HorizontalAlignment="Left" Margin="4,0"/></Border></StackPanel>
+                </Grid>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsChecked" Value="True"><Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="SwitchKnob" Property="Fill" Value="{DynamicResource Text}"/><Setter TargetName="SwitchKnob" Property="HorizontalAlignment" Value="Right"/></Trigger>
+                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Attribute" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Attribute" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate></ToggleButton.Template>
+            <TextBlock x:Name="MoveBehaviorValue" FontSize="{DynamicResource Font16}" Foreground="{DynamicResource MutedText}"/>
+          </ToggleButton>
+          <TextBlock x:Name="MoveBehaviorDescription" Margin="17,16,17,0" Foreground="{DynamicResource MutedText}" FontSize="{DynamicResource Font16}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+        </StackPanel>
+      </Grid>
       <Grid x:Name="DetailsSurface" Grid.Row="1" Visibility="Collapsed" Margin="12,0">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <TextBlock Text="Подробности" FontSize="{DynamicResource Font18}" FontWeight="SemiBold" Margin="0,0,0,12"/>

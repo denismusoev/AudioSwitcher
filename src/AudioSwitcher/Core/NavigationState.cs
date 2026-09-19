@@ -1,6 +1,6 @@
 namespace AudioSwitcher.Core;
 
-public enum AppSection { Audio, Displays, Programs }
+public enum AppSection { Audio, Displays, Programs, Settings }
 public enum ProgramPanel { List, Actions, Windows, ConfirmTermination, ConfirmDelete, ConfirmReset }
 public sealed class NavigationState
 {
@@ -10,7 +10,7 @@ public sealed class NavigationState
     public bool ChangeSection(int direction)
     {
         if (Panel != ProgramPanel.List) return false;
-        var next = (AppSection)Math.Clamp((int)Section + direction, 0, 2);
+        var next = (AppSection)Math.Clamp((int)Section + direction, 0, (int)AppSection.Settings);
         if (next == Section) return false;
         Section = next; return true;
     }

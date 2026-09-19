@@ -24,7 +24,9 @@ internal static class FixedDesignChecks
             new XAttribute(XNamespace.Xmlns + "sys", "clr-namespace:System;assembly=System.Runtime"), resources.Elements());
         dictionary.Add(new XAttribute(XNamespace.Xmlns + "controls", "clr-namespace:AudioSwitcher.Controls;assembly=AudioSwitcher"));
         app.Resources = (ResourceDictionary)XamlReader.Parse(dictionary.ToString());
-        var window = new MainWindow(); window.Show();
+        var preferencePath = Path.Combine(Path.GetTempPath(), "AudioSwitcher-settings-" + Guid.NewGuid().ToString("N") + ".json");
+        var preferences = new ApplicationSettingsStore(preferencePath);
+        var window = new MainWindow(preferences); window.Show();
         int failed = 0, passed = 0;
         void Check(string name, Action action)
         {
@@ -218,9 +220,38 @@ internal static class FixedDesignChecks
                     Call(programs, "ApplyRunningSnapshot", new object?[] { Array.Empty<RunningProgram>(), true });
                     Require(!programs.InPanel && ((ListBox)programs.FindName("RunningList")).Items.Count == 0, "Closed process leaves stale action page");
                 });
+                Call(window, "SwitchSection", new object?[] { AppSection.Settings }); window.UpdateLayout();
+                Check("Fourth settings section fits fixed window and keeps device surfaces hidden", () =>
+                {
+                    var tab = (FrameworkElement)window.FindName("SettingsTab");
+                    Require(tab.IsVisible && tab.TranslatePoint(new Point(tab.ActualWidth, 0), window).X <= 604, "Fourth tab does not fit");
+                    Require(((FrameworkElement)window.FindName("SettingsSurface")).IsVisible && !programs.IsVisible && !devices.IsVisible, "Settings overlap other section");
+                    Require(window.ActualWidth == 640 && window.ActualHeight == 700, "Window dimensions changed");
+                });
+                Check("Settings navigation does not apply until confirm; both choices persist across reload", () =>
+                {
+                    var toggle = (ToggleButton)window.FindName("MoveBehaviorToggle");
+                    var description = (TextBlock)window.FindName("MoveBehaviorDescription");
+                    Require(programs.MoveBehavior == WindowMoveBehavior.KeepUtilityFocused, "Default closes utility");
+                    Call(window, "Execute", new object?[] { PadAction.Up });
+                    Require(toggle.IsChecked == false && programs.MoveBehavior == WindowMoveBehavior.KeepUtilityFocused, "Navigation changed behavior before confirm");
+                    Call(window, "Execute", new object?[] { PadAction.Confirm });
+                    Require(programs.MoveBehavior == WindowMoveBehavior.ActivateAndClose && preferences.Load().MoveBehavior == WindowMoveBehavior.ActivateAndClose, "Activate/close choice not saved");
+                    Require(toggle.IsChecked == true && description.Text.Contains("получит фокус") && description.Text.Contains("закроется"), "Enabled explanation did not update");
+                    Call(window, "Execute", new object?[] { PadAction.Down }); Call(window, "Execute", new object?[] { PadAction.Confirm });
+                    Require(programs.MoveBehavior == WindowMoveBehavior.KeepUtilityFocused && preferences.Load().MoveBehavior == WindowMoveBehavior.KeepUtilityFocused, "Keep-focus choice not saved");
+                    Require(toggle.IsChecked == false && description.Text.Contains("без передачи фокуса") && description.Text.Contains("останется открытым"), "Disabled explanation did not update");
+                    Key(window, System.Windows.Input.Key.Enter);
+                    Require(toggle.IsChecked == true && preferences.Load().MoveBehavior == WindowMoveBehavior.ActivateAndClose, "Enter did not switch/save setting");
+                    var peer = new System.Windows.Automation.Peers.ToggleButtonAutomationPeer(toggle);
+                    ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle)).Toggle();
+                    Require(toggle.IsChecked == false && preferences.Load().MoveBehavior == WindowMoveBehavior.KeepUtilityFocused && description.Text.Contains("без передачи фокуса"), "Native toggle change did not save/update explanation");
+                    File.WriteAllText(preferencePath, "invalid json"); Require(preferences.Load().MoveBehavior == WindowMoveBehavior.KeepUtilityFocused, "Malformed settings have unsafe fallback");
+                });
+                Capture(window, "ps5-implemented-settings.png");
             }
             catch (Exception e) { failed++; Console.WriteLine("FAIL setup: " + e); }
-            finally { Console.WriteLine($"Passed: {passed}, Failed: {failed}"); window.Close(); app.Shutdown(); }
+            finally { Console.WriteLine($"Passed: {passed}, Failed: {failed}"); window.Close(); if (File.Exists(preferencePath)) File.Delete(preferencePath); app.Shutdown(); }
         }));
         app.Run(); return failed == 0 ? 0 : 1;
     }

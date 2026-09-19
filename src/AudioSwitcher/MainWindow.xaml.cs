@@ -20,6 +20,9 @@ public partial class MainWindow : Window
     private NavigationState navigation => Programs.Navigation;
     private bool showingDisplays => navigation.Section == AppSection.Displays;
     private bool showingPrograms => navigation.Section == AppSection.Programs;
+    private bool showingSettings => navigation.Section == AppSection.Settings;
+    private readonly ApplicationSettingsStore settingsStore;
+    private bool updatingMovePreference = true;
     private bool busy, padArmed;
     private Point pointerStart;
     private bool dragAllowed, dragged;
@@ -27,9 +30,14 @@ public partial class MainWindow : Window
     private string? errorDetails;
     private bool detailsOpen;
     private string signature = "";
-    public MainWindow()
+    public MainWindow() : this(new ApplicationSettingsStore()) { }
+    public MainWindow(ApplicationSettingsStore settingsStore)
     {
+        this.settingsStore = settingsStore;
         InitializeComponent();
+        Programs.MoveBehavior = settingsStore.Load().MoveBehavior;
+        UpdateMovePreference();
+        Programs.TransferCompleted += Close;
         interfaceSettings = new InterfaceSettings(Application.Current, UpdateAppearance);
         SizeChanged += (_, _) => UpdateAppearance();
         Programs.StatusChanged += SetStatus;
@@ -41,7 +49,7 @@ public partial class MainWindow : Window
     }
     private void UpdateAppearance()
     {
-        AudioTab.FontSize = DisplayTab.FontSize = ProgramsTab.FontSize = 28;
+        AudioTab.FontSize = DisplayTab.FontSize = ProgramsTab.FontSize = SettingsTab.FontSize = 24;
         WindowFrame.Padding = new Thickness(36, 28, 36, 24);
         UpdateHints();
     }
@@ -56,15 +64,17 @@ public partial class MainWindow : Window
         if ((panelDetails == null && (errorDetails == null || Programs.InPanel)) || busy || Programs.IsBusy) return;
         detailsOpen = true; FullError.Text = panelDetails ?? errorDetails;
         DeviceSurface.Visibility = Programs.Visibility = Visibility.Collapsed;
+        SettingsSurface.Visibility = Visibility.Collapsed;
         DetailsSurface.Visibility = Visibility.Visible; ErrorScroll.ScrollToTop(); ErrorScroll.Focus(); UpdateHints();
     }
     private bool CloseDetails()
     {
         if (!detailsOpen) return false;
         detailsOpen = false; DetailsSurface.Visibility = Visibility.Collapsed;
-        DeviceSurface.Visibility = showingPrograms ? Visibility.Collapsed : Visibility.Visible;
+        DeviceSurface.Visibility = showingPrograms || showingSettings ? Visibility.Collapsed : Visibility.Visible;
+        SettingsSurface.Visibility = showingSettings ? Visibility.Visible : Visibility.Collapsed;
         Programs.Visibility = showingPrograms ? Visibility.Visible : Visibility.Collapsed;
-        if (!showingPrograms) Devices.Focus(); else Programs.RestoreFocus();
+        if (showingSettings) MoveBehaviorToggle.Focus(); else if (!showingPrograms) Devices.Focus(); else Programs.RestoreFocus();
         UpdateHints(); return true;
     }
     private void FitToWorkArea()
@@ -75,6 +85,7 @@ public partial class MainWindow : Window
     }
     private void Refresh(bool quiet = false, string? preferred = null)
     {
+        if (showingSettings) return;
         if (showingPrograms) { _ = Programs.RefreshAsync(quiet); return; }
         try
         {
@@ -104,10 +115,12 @@ public partial class MainWindow : Window
         if (busy || Programs.IsBusy || Programs.InPanel || detailsOpen || navigation.Section == section) return;
         Programs.Leave(); navigation.Section = section;
         Devices.ItemsSource = null; signature = "";
-        DeviceSurface.Visibility = showingPrograms ? Visibility.Collapsed : Visibility.Visible;
+        DeviceSurface.Visibility = showingPrograms || showingSettings ? Visibility.Collapsed : Visibility.Visible;
+        SettingsSurface.Visibility = showingSettings ? Visibility.Visible : Visibility.Collapsed;
         Programs.Visibility = showingPrograms ? Visibility.Visible : Visibility.Collapsed;
         gate.RequireRelease(); UpdateHints();
-        if (showingPrograms)
+        if (showingSettings) { UpdateMovePreference(); SetStatus("Готово"); MoveBehaviorToggle.Focus(); }
+        else if (showingPrograms)
         {
             AudioTab.Foreground = DisplayTab.Foreground = (Brush)FindResource("MutedText");
             ProgramsTab.Foreground = (Brush)FindResource("Text"); Programs.Enter();
@@ -117,13 +130,13 @@ public partial class MainWindow : Window
     private void UpdateHints()
     {
         bool available = !busy && !Programs.IsBusy && !Programs.InPanel && !detailsOpen;
-        AudioTab.IsEnabled = DisplayTab.IsEnabled = ProgramsTab.IsEnabled = available;
+        AudioTab.IsEnabled = DisplayTab.IsEnabled = ProgramsTab.IsEnabled = SettingsTab.IsEnabled = available;
         StatusSurface.Visibility = Visibility.Visible;
         CatalogCommand.Visibility = showingPrograms && navigation.LaunchList && !Programs.InPanel ? Visibility.Visible : Visibility.Collapsed;
         SaveCommand.Visibility = Programs.Editing ? Visibility.Visible : Visibility.Collapsed;
         CatalogCommand.IsEnabled = SaveCommand.IsEnabled = !busy && !Programs.IsBusy;
         BackCommand.Content = detailsOpen || Programs.InPanel ? "Назад" : "Закрыть";
-        foreach (var (tab, selected) in new[] { (AudioTab, navigation.Section == AppSection.Audio), (DisplayTab, navigation.Section == AppSection.Displays), (ProgramsTab, showingPrograms) })
+        foreach (var (tab, selected) in new[] { (AudioTab, navigation.Section == AppSection.Audio), (DisplayTab, navigation.Section == AppSection.Displays), (ProgramsTab, showingPrograms), (SettingsTab, showingSettings) })
         {
             tab.SetResourceReference(Control.ForegroundProperty, selected ? "Text" : "MutedText");
             tab.IsSelected = selected;
@@ -180,7 +193,7 @@ public partial class MainWindow : Window
             case PadAction.Left:
             case PadAction.PreviousSection: SwitchSection((AppSection)Math.Max(0, (int)navigation.Section - 1)); break;
             case PadAction.Right:
-            case PadAction.NextSection: SwitchSection((AppSection)Math.Min(2, (int)navigation.Section + 1)); break;
+            case PadAction.NextSection: SwitchSection((AppSection)Math.Min((int)AppSection.Settings, (int)navigation.Section + 1)); break;
             case PadAction.ToggleList:
                 if (showingPrograms && !Programs.InPanel) Programs.SelectMode(!navigation.LaunchList);
                 break;
@@ -188,9 +201,9 @@ public partial class MainWindow : Window
                 if (showingPrograms) _ = Programs.CatalogAsync();
                 else OpenDetails();
                 break;
-            case PadAction.Up: if (showingPrograms) Programs.Move(-1); else Move(-1); break;
-            case PadAction.Down: if (showingPrograms) Programs.Move(1); else Move(1); break;
-            case PadAction.Confirm: if (showingPrograms) _ = Programs.ConfirmAsync(); else _ = ApplySelected(); break;
+            case PadAction.Up: if (showingSettings) MoveSetting(-1); else if (showingPrograms) Programs.Move(-1); else Move(-1); break;
+            case PadAction.Down: if (showingSettings) MoveSetting(1); else if (showingPrograms) Programs.Move(1); else Move(1); break;
+            case PadAction.Confirm: if (showingSettings) ApplySetting(); else if (showingPrograms) _ = Programs.ConfirmAsync(); else _ = ApplySelected(); break;
         }
     }
     private void Move(int direction)
@@ -213,6 +226,7 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape) { if (!e.IsRepeat) Execute(PadAction.Close); e.Handled = true; return; }
         if (Programs.Editing) return;
+        if (e.Key == Key.Enter && Keyboard.FocusedElement == MoveBehaviorToggle) { if (!e.IsRepeat) ApplySetting(); e.Handled = true; return; }
         if (e.Key == Key.Enter && Keyboard.FocusedElement is ButtonBase) return;
         if (e.Key == Key.F5 && !busy) { Refresh(); e.Handled = true; return; }
         var action = e.Key switch { Key.Up => PadAction.Up, Key.Down => PadAction.Down, Key.Left => PadAction.Left, Key.Right => PadAction.Right, Key.Enter => PadAction.Confirm, Key.X => PadAction.ToggleList, Key.Y => PadAction.Details, Key.F1 => PadAction.Details, _ => PadAction.None };
@@ -225,6 +239,30 @@ public partial class MainWindow : Window
     private void BackCommandClick(object sender, RoutedEventArgs e) { Execute(PadAction.Close); }
     private void DisplayClick(object sender, RoutedEventArgs e) => SwitchTab(true);
     private void ProgramsClick(object sender, RoutedEventArgs e) => SwitchSection(AppSection.Programs);
+    private void SettingsClick(object sender, RoutedEventArgs e) => SwitchSection(AppSection.Settings);
+    private void MoveSetting(int direction) => MoveBehaviorToggle.Focus();
+    private void ApplySetting() => MoveBehaviorToggle.IsChecked = Programs.MoveBehavior != WindowMoveBehavior.ActivateAndClose;
+    private void UpdateMovePreference()
+    {
+        updatingMovePreference = true;
+        try
+        {
+            bool enabled = Programs.MoveBehavior == WindowMoveBehavior.ActivateAndClose;
+            MoveBehaviorToggle.IsChecked = enabled;
+            MoveBehaviorValue.Text = enabled ? "Вкл." : "Выкл.";
+            MoveBehaviorDescription.Text = enabled
+                ? "Приложение получит фокус. AudioSwitcher закроется после успешного переноса."
+                : "Окно переместится без передачи фокуса. AudioSwitcher останется открытым и активным.";
+        }
+        finally { updatingMovePreference = false; }
+    }
+    private void MovePreferenceChanged(object sender, RoutedEventArgs e)
+    {
+        if (updatingMovePreference) return;
+        var behavior = MoveBehaviorToggle.IsChecked == true ? WindowMoveBehavior.ActivateAndClose : WindowMoveBehavior.KeepUtilityFocused;
+        try { settingsStore.Save(new(behavior)); Programs.MoveBehavior = behavior; UpdateMovePreference(); SetStatus("Настройка сохранена"); }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException) { UpdateMovePreference(); SetStatus("Не удалось сохранить настройку", error.Message); }
+    }
     private async void ApplyMouseClick(object sender, MouseButtonEventArgs e)
     {
         if (!dragged && ItemsControl.ContainerFromElement(Devices, e.OriginalSource as DependencyObject) is ListBoxItem item)

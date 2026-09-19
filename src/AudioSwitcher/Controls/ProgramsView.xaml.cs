@@ -35,6 +35,8 @@ public partial class ProgramsView : UserControl
     public string ActionHint => IsBusy ? "Подождите" : Editing ? "Сохранить" : InPanel ? "Выбрать" : "Действия";
     public event Action<string, string?>? StatusChanged;
     public event Action? ContextChanged;
+    public event Action? TransferCompleted;
+    public WindowMoveBehavior MoveBehavior { get; set; } = WindowMoveBehavior.KeepUtilityFocused;
 
     public ProgramsView() : this(new LaunchCatalogStore()) { }
     public ProgramsView(LaunchCatalogStore store)
@@ -287,8 +289,10 @@ public partial class ProgramsView : UserControl
     }
     private async Task MoveWindow(WindowTarget target)
     {
-        if (!await RunOperation("Перемещение…", token => mover.MoveToPrimaryAsync(target, token))) return;
-        ReturnToList(focus: false);
+        bool activate = MoveBehavior == WindowMoveBehavior.ActivateAndClose;
+        if (!await RunOperation("Перемещение…", token => mover.MoveToPrimaryAsync(target, token, activate))) return;
+        if (activate) { TransferCompleted?.Invoke(); return; }
+        ReturnToList();
         // Let WPF commit the panel transition before replacing the list source.
         // Updating ItemsSource in the same layout pass can leave stale selected-row
         // pixels behind after the native window has moved between monitors.

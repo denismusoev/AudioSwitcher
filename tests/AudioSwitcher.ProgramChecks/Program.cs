@@ -123,6 +123,15 @@ try
         var result = await new ProgramWindowMover().MoveToPrimaryAsync(first.Windows[0] with { Handle = second.Windows[0].Handle });
         Require(result.Code == ProgramResultCode.TargetChanged, result.Message);
     });
+    foreach (var mode in new[] { "--minimized", "--minimized --maximized" })
+    await Check("Move without activation preserves foreground (" + mode + ")", async () => {
+        var program = await Start("keep foreground " + mode, mode);
+        var foreground = FixtureNative.GetForegroundWindow();
+        var result = await new ProgramWindowMover().MoveToPrimaryAsync(program.Windows[0], activate: false);
+        Require(result.Succeeded, result.Message);
+        Require(FixtureNative.GetForegroundWindow() == foreground, "Non-activating move changed foreground window");
+        Require(!FixtureNative.IsIconic(program.Windows[0].Handle), "Window not restored");
+    });
     await Check("Moving own minimized fixture restores it on primary and reports activation outcome", async () => {
         var program = await Start("activate on primary", "--minimized");
         var target = program.Windows[0];

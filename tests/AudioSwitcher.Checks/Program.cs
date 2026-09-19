@@ -71,11 +71,13 @@ Check("Program panels cancel before closing the application", () => {
     Equal(false, navigation.ChangeSection(-1)); Equal(AppSection.Programs, navigation.Section);
     Equal(true, navigation.Back()); Equal(ProgramPanel.Actions, navigation.Panel);
 });
-Check("Three sections and two program lists navigate independently", () => {
+Check("Four sections and two program lists navigate independently", () => {
     var navigation = new NavigationState();
     Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Displays, navigation.Section);
     Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Programs, navigation.Section);
-    Equal(false, navigation.ChangeSection(1));
+    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Settings, navigation.Section);
+    Equal(false, navigation.ChangeSection(1)); Equal(false, navigation.ToggleList());
+    Equal(true, navigation.ChangeSection(-1)); Equal(AppSection.Programs, navigation.Section);
     Equal(true, navigation.ToggleList()); Equal(true, navigation.LaunchList);
     navigation.Panel = ProgramPanel.Actions; Equal(false, navigation.ToggleList());
 });
