@@ -63,7 +63,7 @@ Check("Window placement accepts a mostly contained frame and rejects a sliver", 
     if (ProgramWindowLayout.IsSufficientlyOnScreen(new(980, 100, 500, 500), area, 3)) throw new Exception("Mostly off-screen frame was accepted");
 });
 Check("Program panels cancel before closing the application", () => {
-    var navigation = new NavigationState { Section = AppSection.Running, Panel = ProgramPanel.ConfirmTermination };
+    var navigation = new NavigationState { Section = AppSection.Running, Panel = ProgramPanel.CloseWindows };
     Equal(true, navigation.Back()); Equal(ProgramPanel.List, navigation.Panel);
     Equal(false, navigation.Back());
     navigation.Panel = ProgramPanel.Windows;

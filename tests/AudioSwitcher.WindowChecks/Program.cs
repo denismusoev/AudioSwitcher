@@ -198,7 +198,7 @@ internal static class Program
                         typeof(MainWindow).GetMethod("UpdateAppearance", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
                     }
                 });
-                await Check("Process details identify its window before termination", () => {
+                await Check("Program details identify its window before an action", () => {
                     var identity = new ProcessIdentity(17, 23);
                     var program = new RunningProgram(identity, "Редактор", new[] { new WindowTarget(identity, 123, "Документ А", "Экран 1", false) });
                     if (!program.DisplayDetails.Contains("Документ А")) throw new Exception("Distinctive window title missing from process details");
@@ -360,7 +360,7 @@ internal static class Program
                     }
                     finally { devices.ItemsSource = originalSource; devices.SelectedItem = originalSelection; window.UpdateLayout(); }
                 });
-                await Check("Program action confirmation defaults to cancel and Back returns through panels", async () => {
+                await Check("Program close action opens window choices without confirmation and Back returns through panels", async () => {
                     var switchSection = typeof(MainWindow).GetMethod("SwitchSection", BindingFlags.Instance | BindingFlags.NonPublic)!;
                     var programs = (ProgramsView)window.FindName("Programs");
                     try
@@ -376,10 +376,9 @@ internal static class Program
                             throw new Exception("Modal must block section tabs and hide unavailable section navigation");
                         var actions = (ListBox)programs.FindName("ProgramActions");
                         actions.SelectedIndex = 1; await programs.ConfirmAsync();
-                        if (programs.Navigation.Panel != ProgramPanel.ConfirmTermination || actions.SelectedIndex != 0) throw new Exception("Termination confirmation must default to Cancel");
-                        await programs.ConfirmAsync();
-                        if (programs.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Default confirmation did not cancel");
-                        if (!programs.Back() || programs.Navigation.Panel != ProgramPanel.List) throw new Exception("Back must return to list");
+                        if (programs.Navigation.Panel != ProgramPanel.CloseWindows || actions.Items.Count != 2) throw new Exception("Close window picker must contain the window and close-all choice");
+                        if (!programs.Back() || programs.Navigation.Panel != ProgramPanel.Actions) throw new Exception("Back must return to actions");
+                        if (!programs.Back() || programs.Navigation.Panel != ProgramPanel.List) throw new Exception("Second Back must return to list");
                         window.UpdateLayout(); await Dispatcher.Yield(DispatcherPriority.ContextIdle);
                         if (!list.IsKeyboardFocusWithin || !((Button)window.FindName("ProgramsTab")).IsEnabled)
                             throw new Exception("Back must restore list focus and section navigation");

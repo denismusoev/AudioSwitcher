@@ -75,12 +75,12 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
         field = index; IsTextEditing = false;
         Attributes[field].Focus(); Attributes[field].BringIntoView();
     }
-    public void MoveField(int direction)
+    public void MoveField(PadAction direction)
     {
         if (saving || IsTextEditing) return;
-        int next = field + direction;
-        while (next >= 0 && next < Attributes.Length && !Attributes[next].IsVisible) next += direction;
-        if (next >= 0 && next < Attributes.Length) SelectField(next);
+        int delta = direction switch { PadAction.Up => -1, PadAction.Down => 1, PadAction.Left => -2, PadAction.Right => 2, _ => 0 };
+        int next = field + delta;
+        if (delta != 0 && next >= 0 && next < Attributes.Length && Attributes[next].IsVisible) SelectField(next);
     }
     public void ConfirmField()
     {
@@ -110,6 +110,10 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
         else if (e.Key == Key.Escape) { if (!EndFieldInput()) Close(); e.Handled = true; }
         else if (e.Key == Key.F2) { _ = SaveAsync(); e.Handled = true; }
         else if (e.Key == Key.Enter) { ConfirmField(); e.Handled = true; }
-        else if (!IsTextEditing && e.Key is Key.Up or Key.Down) { MoveField(e.Key == Key.Up ? -1 : 1); e.Handled = true; }
+        else if (!IsTextEditing && e.Key is Key.Up or Key.Down or Key.Left or Key.Right)
+        {
+            MoveField(e.Key switch { Key.Up => PadAction.Up, Key.Down => PadAction.Down, Key.Left => PadAction.Left, _ => PadAction.Right });
+            e.Handled = true;
+        }
     }
 }

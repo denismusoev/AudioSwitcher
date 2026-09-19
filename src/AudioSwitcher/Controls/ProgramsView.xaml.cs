@@ -9,7 +9,7 @@ namespace AudioSwitcher.Controls;
 
 public partial class ProgramsView : UserControl
 {
-    private sealed record Choice(string Id, string DisplayName, string DisplayDetails = "");
+    private sealed record Choice(string Id, string DisplayName, string DisplayDetails = "", WindowTarget? Window = null);
     private sealed record CatalogRow(LaunchEntry Entry)
     {
         public string DisplayName => Entry.Name;
@@ -74,18 +74,18 @@ public partial class ProgramsView : UserControl
     }
     private void ApplyRunningSnapshot(IReadOnlyList<RunningProgram> snapshot, bool quiet)
     {
-        string signature = string.Join("|", snapshot.Select(p => $"{p.Identity}:{p.Name}:{string.Join(';', p.Windows.Select(w => $"{w.Handle}:{w.Title}:{w.Screen}:{w.NotResponding}"))}"));
+        string signature = string.Join("|", snapshot.Select(p => $"{p.Key}:{p.Name}:{string.Join(';', p.Windows.Select(w => $"{w.Handle}:{w.Title}:{w.Screen}:{w.NotResponding}"))}"));
         if (signature != snapshotSignature)
         {
-            var selected = (RunningList.SelectedItem as RunningProgram)?.Identity;
+            var selected = (RunningList.SelectedItem as RunningProgram)?.Key;
             RunningList.ItemsSource = snapshot;
-            RunningList.SelectedItem = snapshot.FirstOrDefault(p => p.Identity == selected) ?? snapshot.FirstOrDefault();
+            RunningList.SelectedItem = snapshot.FirstOrDefault(p => p.Key == selected) ?? snapshot.FirstOrDefault();
             snapshotSignature = signature;
             if (!InPanel) ScrollSelection(RunningList);
         }
         if (InPanel && currentProgram != null)
         {
-            var latest = snapshot.FirstOrDefault(p => p.Identity == currentProgram.Identity);
+            var latest = snapshot.FirstOrDefault(p => p.Key == currentProgram.Key);
             if (latest == null)
             {
                 currentProgram = null; ReturnToList(focus: Window.GetWindow(this)?.IsActive == true); Notify("Программа уже закрыта"); return;
@@ -108,6 +108,7 @@ public partial class ProgramsView : UserControl
                 }
                 PanelDescription.Text = latest.Name;
             }
+            else if (Navigation.Panel == ProgramPanel.CloseWindows) ShowCloseChoices(latest);
         }
         UpdateEmpty(); if (!quiet) Notify("Готово");
     }
@@ -165,12 +166,16 @@ public partial class ProgramsView : UserControl
         if (IsBusy) return;
         if (Editing)
         {
-            Editor?.MoveField(direction);
+            Editor?.MoveField(direction < 0 ? PadAction.Up : PadAction.Down);
             return;
         }
         var list = InPanel ? ProgramActions : Navigation.LaunchList ? LaunchList : RunningList;
         if (list.Items.Count == 0) return;
         list.SelectedIndex = Math.Clamp(list.SelectedIndex + direction, 0, list.Items.Count - 1); list.Focus(); ScrollSelection(list);
+    }
+    public void MoveHorizontal(int direction)
+    {
+        if (Editing && !IsBusy) Editor?.MoveField(direction < 0 ? PadAction.Left : PadAction.Right);
     }
     private static void ScrollSelection(ListBox list) { if (list.SelectedItem != null) list.ScrollIntoView(list.SelectedItem); }
     private static void FocusSelection(ListBox list)
@@ -225,12 +230,12 @@ public partial class ProgramsView : UserControl
                 if (currentProgram.Windows.Count == 1) await MoveWindow(currentProgram.Windows[0]);
                 else ShowPanel(ProgramPanel.Windows, "Какое окно переместить?", currentProgram.Name, currentProgram.Windows);
                 break;
-            case "terminate":
-                bool normalClose = currentProgram != null && processes.UsesNormalClose(currentProgram.Identity);
-                ShowPanel(ProgramPanel.ConfirmTermination, normalClose ? "Закрыть окна Проводника?" : $"Завершить {currentProgram?.Name}?", "Запущенные программы",
-                    new[] { new Choice("cancel", "Отмена"), new Choice("kill", normalClose ? "Закрыть окна" : "Завершить принудительно") }); break;
-            case "kill":
-                if (currentProgram != null && await RunOperation("Завершение…", token => processes.TerminateAsync(currentProgram.Identity, token)))
+            case "close": if (currentProgram != null) ShowCloseChoices(currentProgram); break;
+            case "close-window":
+                if (choice.Window != null && await RunOperation("Закрытие…", token => processes.CloseAsync(choice.Window, token)))
+                { ReturnToList(); await RefreshAsync(quiet: true); } break;
+            case "close-all":
+                if (currentProgram != null && await RunOperation("Закрытие…", token => processes.CloseAllAsync(currentProgram.Windows, token)))
                 { ReturnToList(); await RefreshAsync(quiet: true); } break;
             case "add": await EditEntry(null); break;
             case "edit": if (currentEntry != null) await EditEntry(currentEntry); break;
@@ -273,12 +278,20 @@ public partial class ProgramsView : UserControl
         if (Navigation.LaunchList)
             ShowPanel(ProgramPanel.Actions, "Каталог запуска", currentEntry?.Name ?? "Каталог пуст", new[] { new Choice("edit", "Редактировать"), new Choice("delete", "Удалить запись"), new Choice("add", "Добавить программу") });
         else
-            ShowPanel(ProgramPanel.Actions, currentProgram?.Name ?? "Программа", string.Join(", ", currentProgram?.Windows.Select(w => w.Screen).Distinct() ?? []), new[] { new Choice("move", "На главный экран"), new Choice("terminate", currentProgram != null && processes.UsesNormalClose(currentProgram.Identity) ? "Закрыть окна" : "Завершить принудительно") });
+            ShowPanel(ProgramPanel.Actions, currentProgram?.Name ?? "Программа", string.Join(", ", currentProgram?.Windows.Select(w => w.Screen).Distinct() ?? []), new[] { new Choice("move", "На главный экран"), new Choice("close", "Закрыть окна") });
+    }
+    private void ShowCloseChoices(RunningProgram program)
+    {
+        currentProgram = program;
+        var choices = program.Windows.Select(window => new Choice("close-window", window.DisplayName, window.DisplayDetails, window))
+            .Append(new Choice("close-all", "Закрыть все окна", $"Окна: {program.Windows.Count}"))
+            .ToArray();
+        ShowPanel(ProgramPanel.CloseWindows, "Какое окно закрыть?", program.Name, choices);
     }
     private void ShowPanel(ProgramPanel panel, string title, string description, System.Collections.IEnumerable choices)
     {
         Navigation.Panel = panel; PanelTitle.Text = title; PanelDescription.Text = description;
-        bool confirmation = panel is ProgramPanel.ConfirmTermination or ProgramPanel.ConfirmDelete or ProgramPanel.ConfirmReset;
+        bool confirmation = panel is ProgramPanel.ConfirmDelete or ProgramPanel.ConfirmReset;
         PanelSurface.Background = confirmation ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(185, 8, 10, 13)) : System.Windows.Media.Brushes.Transparent;
         PanelContainer.Width = confirmation ? 680 : double.NaN;
         PanelContainer.MaxHeight = confirmation ? 350 : double.PositiveInfinity;
@@ -385,9 +398,7 @@ public partial class ProgramsView : UserControl
         }
         if (RunningList.SelectedItem is not RunningProgram program) return;
         currentProgram = program; currentEntry = null;
-        bool normalClose = processes.UsesNormalClose(program.Identity);
-        ShowPanel(ProgramPanel.ConfirmTermination, normalClose ? "Закрыть окна Проводника?" : $"Завершить {program.Name}?", "Запущенные программы",
-            new[] { new Choice("cancel", "Отмена"), new Choice("kill", normalClose ? "Закрыть окна" : "Завершить принудительно") });
+        ShowCloseChoices(program);
     }
     public async Task CreateAsync()
     {

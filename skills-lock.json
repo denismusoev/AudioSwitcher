@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "frontend-ui-standards": {
+      "source": "maxhan7/frontend-ui-standards-skill",
+      "sourceType": "github",
+      "skillPath": "frontend-ui-standards/SKILL.md",
+      "computedHash": "a42dce5560164c3f6ac4383249555612f273b9918f4dd06627b1bdec9c04b3b1"
+    }
+  }
+}

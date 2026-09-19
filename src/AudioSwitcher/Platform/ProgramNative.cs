@@ -9,7 +9,7 @@ namespace AudioSwitcher.Platform;
 
 internal static class ProgramNative
 {
-    internal const uint Query = 0x1000, Synchronize = 0x100000, Terminate = 1;
+    internal const uint Query = 0x1000, Synchronize = 0x100000;
     internal delegate bool WindowCallback(nint window, nint parameter);
     [StructLayout(LayoutKind.Sequential)] internal struct Rect
     {
@@ -57,7 +57,6 @@ internal static class ProgramNative
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] internal static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, StringBuilder name, ref int size);
     [DllImport("kernel32.dll")] internal static extern bool ProcessIdToSessionId(int process, out uint session);
     [DllImport("advapi32.dll", SetLastError = true)] internal static extern bool OpenProcessToken(SafeProcessHandle process, uint access, out SafeAccessTokenHandle token);
-    [DllImport("kernel32.dll", SetLastError = true)] internal static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)] internal static extern uint WaitForSingleObject(SafeProcessHandle handle, uint milliseconds);
 
     internal static readonly string? CurrentUser = ReadCurrentUser();

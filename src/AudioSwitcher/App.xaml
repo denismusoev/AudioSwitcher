@@ -57,12 +57,12 @@
     <Style TargetType="ListBoxItem">
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Foreground" Value="{DynamicResource Text}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-      <Setter Property="Margin" Value="0,0,0,10"/><Setter Property="Padding" Value="20,14"/><Setter Property="MinHeight" Value="94"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Margin" Value="0,0,0,10"/><Setter Property="Padding" Value="20,14"/><Setter Property="MinHeight" Value="94"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="SnapsToDevicePixels" Value="True"/><Setter Property="UseLayoutRounding" Value="True"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
-        <Border x:Name="Row" CornerRadius="9" Background="#15191F" BorderBrush="#50565F" BorderThickness="1" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/></Border>
+        <Border x:Name="Row" CornerRadius="9" Background="#15191F" BorderBrush="#50565F" BorderThickness="2" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><ContentPresenter VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/></Border>
         <ControlTemplate.Triggers>
           <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
-          <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Text}"/><Setter TargetName="Row" Property="BorderThickness" Value="3"/></Trigger>
+          <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Text}"/></Trigger>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>

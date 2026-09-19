@@ -18,31 +18,16 @@ async Task<RunningProgram> Start(string suffix, string extra = "")
     owned.Add(process);
     for (int i = 0; i < 100; i++)
     {
-        var program = (await windows.GetProgramsAsync()).FirstOrDefault(p => p.Identity.Pid == process.Id);
-        if (program != null && (!extra.Contains("--multiple") || program.Windows.Count == 2)) return program;
+        var program = (await windows.GetProgramsAsync()).FirstOrDefault(p => p.Windows.Any(w => w.Process.Pid == process.Id));
+        var ownWindows = program?.Windows.Where(w => w.Process.Pid == process.Id).ToArray() ?? [];
+        if (program != null && (!extra.Contains("--multiple") || ownWindows.Length == 2))
+            return program with { Identity = ownWindows[0].Process, Windows = ownWindows, ApplicationKey = "" };
         await Task.Delay(100);
     }
     throw new Exception("Fixture window not discovered");
 }
 try
 {
-    await Check("Explorer uses normal window close; stale identity cannot select that policy", () => {
-        var systemExplorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
-        var explorers = Process.GetProcessesByName("explorer");
-        try
-        {
-            foreach (var explorer in explorers)
-            {
-                if (!string.Equals(explorer.MainModule?.FileName, systemExplorer, StringComparison.OrdinalIgnoreCase)) continue;
-                var identity = new ProcessIdentity(explorer.Id, explorer.StartTime.ToUniversalTime().ToFileTimeUtc());
-                Require(processes.UsesNormalClose(identity), "Explorer would use force termination");
-                Require(!processes.UsesNormalClose(identity with { Created = identity.Created + 1 }), "Stale identity accepted");
-                return Task.CompletedTask;
-            }
-            throw new Exception("System Explorer unavailable for read-only policy check");
-        }
-        finally { foreach (var explorer in explorers) explorer.Dispose(); }
-    });
     async Task<RunningProgram> WaitForLaunched(string title)
     {
         for (int i = 0; i < 100; i++)
@@ -50,10 +35,12 @@ try
             var found = (await windows.GetProgramsAsync()).FirstOrDefault(p => p.Windows.Any(w => w.Title == title));
             if (found != null)
             {
-                var process = Process.GetProcessById(found.Identity.Pid);
+                var process = Process.GetProcessById(found.Windows.Single(w => w.Title == title).Process.Pid);
                 _ = process.Handle;
-                Require(process.ProcessName == "AudioSwitcher.ProgramFixture" && process.StartTime.ToUniversalTime().ToFileTimeUtc() == found.Identity.Created, "Launched instance changed");
-                owned.Add(process); return found;
+                Require(process.ProcessName == "AudioSwitcher.ProgramFixture" && process.StartTime.ToUniversalTime().ToFileTimeUtc() == found.Windows.Single(w => w.Title == title).Process.Created, "Launched instance changed");
+                owned.Add(process);
+                var ownWindow = found.Windows.Single(w => w.Title == title);
+                return found with { Identity = ownWindow.Process, Windows = [ownWindow], ApplicationKey = "" };
             }
             await Task.Delay(100);
         }
@@ -79,10 +66,11 @@ try
         await new ProgramLaunchService().LaunchAsync(new(Guid.NewGuid(), "Shortcut fixture", LaunchKind.Shortcut, shortcutPath));
         Require((await WaitForLaunched(title)).Windows[0].Title == title, "Shortcut arguments lost");
     });
-    await Check("Independent user windows are discovered without a launch catalog", async () => {
+    await Check("Separate processes of one executable are grouped as one application", async () => {
         var first = await Start("one"); var second = await Start("two");
-        Require(first.Identity != second.Identity, "Separate processes were merged");
-        Require(first.Windows.Count == 1 && first.Windows[0].Title.Contains("one"), "Wrong window");
+        var grouped = (await windows.GetProgramsAsync()).Single(p => p.Windows.Any(w => w.Process == first.Windows[0].Process) && p.Windows.Any(w => w.Process == second.Windows[0].Process));
+        Require(grouped.Windows.Count >= 2, "Application windows from separate processes were split into rows");
+        Require(grouped.Windows.Any(w => w.Title.Contains("one")) && grouped.Windows.Any(w => w.Title.Contains("two")), "Grouped row lost a window");
     });
     await Check("Running application names use EXE metadata while window choices retain captions", async () => {
         var first = await Start("document one"); var second = await Start("document two", "--multiple");
@@ -95,28 +83,34 @@ try
         var program = await Start("multiple", "--multiple");
         Require(program.Windows.Count == 2, $"Expected two windows, got {program.Windows.Count}");
     });
-    await Check("Changed creation time is rejected without killing the process", async () => {
-        var program = await Start("stale");
-        var result = await processes.TerminateAsync(program.Identity with { Created = program.Identity.Created + 1 });
+    await Check("Changed creation time rejects close without touching the window", async () => {
+        var program = await Start("stale"); var target = program.Windows.Single(w => w.Title.Contains("stale"));
+        var result = await processes.CloseAsync(target with { Process = target.Process with { Created = target.Process.Created + 1 } });
         Require(result.Code == ProgramResultCode.TargetChanged, result.Message);
-        Require(!owned.Last().HasExited, "Mismatched process was killed");
+        Require(!owned.Last().HasExited, "Mismatched process was touched");
     });
-    await Check("Terminating one instance preserves another identical EXE", async () => {
-        var first = await Start("kill target"); var target = owned.Last();
-        _ = await Start("survivor"); var survivor = owned.Last();
-        var result = await processes.TerminateAsync(first.Identity);
-        Require(result.Succeeded && target.HasExited, result.Message);
-        Require(!survivor.HasExited, "Another instance was killed");
-        result = await processes.TerminateAsync(first.Identity);
-        Require(result.Code == ProgramResultCode.AlreadyExited, "Closed target was not handled");
+    await Check("Closing one selected window preserves its sibling window", async () => {
+        var program = await Start("close one", "--multiple"); var process = owned.Last();
+        var target = program.Windows.First(w => w.Process.Pid == process.Id);
+        var result = await processes.CloseAsync(target);
+        Require(result.Succeeded && !process.HasExited, result.Message);
+        var remaining = (await windows.GetProgramsAsync()).Single(p => p.Windows.Any(w => w.Process.Pid == process.Id));
+        Require(remaining.Windows.Count(w => w.Process.Pid == process.Id) == 1, "Sibling window was closed");
     });
-    await Check("Hung user window remains discoverable and can be forcibly terminated", async () => {
+    await Check("Closing all application windows closes every grouped window", async () => {
+        var program = await Start("close all", "--multiple"); var process = owned.Last();
+        var targets = program.Windows.Where(w => w.Process.Pid == process.Id).ToArray();
+        var result = await processes.CloseAllAsync(targets);
+        Require(result.Succeeded, result.Message);
+        Require((await windows.GetProgramsAsync()).All(p => p.Windows.All(w => w.Process.Pid != process.Id)), "An application window remained open");
+    });
+    await Check("Hung user window times out without force terminating its process", async () => {
         var program = await Start("hung", $"--signal={signal}"); var target = owned.Last();
         File.WriteAllText(signal, "hang"); await Task.Delay(800);
         var snapshot = await windows.GetProgramsAsync().WaitAsync(TimeSpan.FromSeconds(3));
-        Require(snapshot.Any(p => p.Identity == program.Identity), "Hung fixture vanished from list");
-        var result = await processes.TerminateAsync(program.Identity);
-        Require(result.Succeeded && target.HasExited, result.Message);
+        var window = snapshot.SelectMany(p => p.Windows).Single(w => w.Process == program.Windows.Single().Process);
+        var result = await processes.CloseAsync(window);
+        Require(result.Code == ProgramResultCode.TimedOut && !target.HasExited, "Hung process was force terminated");
     });
     await Check("Mismatched window owner rejects move without touching another window", async () => {
         var first = await Start("move owner"); var second = await Start("different owner");

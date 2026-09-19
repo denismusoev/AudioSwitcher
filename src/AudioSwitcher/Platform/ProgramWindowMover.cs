@@ -22,7 +22,7 @@ public sealed class ProgramWindowMover
             return new(ProgramResultCode.TargetChanged, "Выбранное окно изменилось или уже закрыто");
         if (!ProgramNative.SameUserSession(process, target.Process.Pid)) return new(ProgramResultCode.AccessDenied, "Окно другого пользователя недоступно");
         var snapshot = ProgramWindowService.GetPrograms(cancellationToken);
-        if (!snapshot.Any(p => p.Identity == target.Process && p.Windows.Any(w => w.Handle == target.Handle)))
+        if (!snapshot.SelectMany(p => p.Windows).Any(w => w.Process == target.Process && w.Handle == target.Handle))
             return new(ProgramResultCode.TargetChanged, "Пользовательское окно больше недоступно");
         if (!ProgramNative.GetWindowRect(target.Handle, out var original)) return ProgramNative.Error(Marshal.GetLastWin32Error());
         nint primary = ProgramNative.MonitorFromPoint(new(0, 0), 1);

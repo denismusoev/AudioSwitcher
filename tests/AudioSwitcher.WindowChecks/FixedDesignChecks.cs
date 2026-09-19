@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -48,6 +49,7 @@ internal static class FixedDesignChecks
                         var display = (Button)window.FindName("DisplayControlCard");
                         Require(audio.ActualHeight >= 118 && display.ActualHeight >= 118, "Task cards are not TV sized");
                         Require(((FrameworkElement)window.FindName("ControlSurface")).IsVisible, "Control surface hidden");
+                        Require(!VisualText(window).Any(text => text is "Быстрое управление" or "Звук и основной экран — без выхода на рабочий стол"), "Removed control-page introduction is still rendered");
                     });
                     Capture(window, "tv-implemented-control.png");
 
@@ -68,12 +70,28 @@ internal static class FixedDesignChecks
                         var sample = new RunningProgram(new(process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc()), "Тестовое приложение",
                             new[] { new WindowTarget(default, (nint)101, "Первое окно", "Экран 1", false), new WindowTarget(default, (nint)102, "Второе окно", "Экран 2", false) });
                         running.ItemsSource = new[] { sample }; running.SelectedItem = sample;
+                        running.UpdateLayout();
+                        var row = (ListBoxItem)running.ItemContainerGenerator.ContainerFromIndex(0);
+                        var rowBorder = VisualChild<Border>(row) ?? throw new Exception("Running row border missing");
+                        var restingBorder = rowBorder.BorderThickness;
+                        row.Focus(); window.UpdateLayout();
+                        Check("Focused rows keep a pixel-aligned constant border", () =>
+                        {
+                            Require(window.UseLayoutRounding && window.SnapsToDevicePixels, "Window is not aligned to device pixels");
+                            Require(rowBorder.BorderThickness == restingBorder && restingBorder == new Thickness(2), $"Focus border changes from {restingBorder} to {rowBorder.BorderThickness}");
+                        });
                         await programs.ConfirmAsync(); window.UpdateLayout();
                         Check("A opens a window picker directly when an app has several windows", () => Require(programs.Navigation.Panel == ProgramPanel.Windows, "Intermediate actions menu opened"));
                         programs.Back();
                         await programs.SecondaryAsync(); window.UpdateLayout();
-                        Check("X opens close confirmation with cancel selected", () => Require(programs.Navigation.Panel == ProgramPanel.ConfirmTermination && ((ListBox)programs.FindName("ProgramActions")).SelectedIndex == 0, "Safe confirmation missing"));
-                        Capture(window, "tv-implemented-confirm-close.png");
+                        Check("X opens direct close choices for each window and all windows", () =>
+                        {
+                            var actions = (ListBox)programs.FindName("ProgramActions");
+                            Require(programs.Navigation.Panel == ProgramPanel.CloseWindows, "Close confirmation was not replaced by a window picker");
+                            Require(actions.Items.Count == 3, $"Expected two windows plus close-all, got {actions.Items.Count}");
+                            Require(actions.Items.Cast<object>().Any(item => item.GetType().GetProperty("DisplayName")?.GetValue(item)?.ToString() == "Закрыть все окна"), "Close-all choice missing");
+                        });
+                        Capture(window, "tv-implemented-close-picker.png");
                         programs.Back();
                     }
 
@@ -96,7 +114,15 @@ internal static class FixedDesignChecks
 
                     Call(window, "OpenDevicePicker", false);
                     window.UpdateLayout();
-                    Check("Audio selection opens as a focused overlay", () => Require(((FrameworkElement)window.FindName("DevicePickerOverlay")).IsVisible && ((ListBox)window.FindName("Devices")).IsKeyboardFocusWithin, "Device picker not focused"));
+                    Check("Audio selection opens as a full-window focused overlay", () =>
+                    {
+                        var shade = (FrameworkElement)window.FindName("OverlayShade");
+                        var card = (Border)window.FindName("DevicePickerOverlay");
+                        var origin = shade.TranslatePoint(new Point(), window);
+                        Require(card.IsVisible && ((ListBox)window.FindName("Devices")).IsKeyboardFocusWithin, "Device picker not focused");
+                        Require(Math.Abs(origin.X) < 0.5 && Math.Abs(origin.Y) < 0.5 && Math.Abs(shade.ActualWidth - window.ActualWidth) < 0.5 && Math.Abs(shade.ActualHeight - window.ActualHeight) < 0.5, "Backdrop does not cover the full window");
+                        Require(card.Background is SolidColorBrush brush && brush.Color.A == 255, "Modal surface is translucent");
+                    });
                     Capture(window, "tv-implemented-audio-picker.png");
                     Call(window, "Execute", PadAction.Close);
 
@@ -105,6 +131,13 @@ internal static class FixedDesignChecks
                     window.UpdateLayout();
                     Check("Y route opens the catalogue editor", () => Require(programs.Editing && programs.Editor != null && programs.Editor.IsVisible, "Editor did not open"));
                     Check("Editor exposes gamepad and mouse save, delete and back actions", () => Require(((Button)window.FindName("CreateCommand")).IsVisible && ((Button)window.FindName("SecondaryCommand")).IsVisible && ((Button)window.FindName("BackCommand")).IsVisible, "Editor commands missing"));
+                    Call(window, "Execute", PadAction.Right);
+                    Call(window, "Execute", PadAction.Confirm);
+                    Check("Editor reaches Arguments with horizontal controller navigation", () => Require(Keyboard.FocusedElement == programs.Editor!.FindName("EntryArguments"), "Right then A did not focus Arguments"));
+                    programs.Editor!.EndFieldInput();
+                    Call(window, "Execute", PadAction.Down);
+                    Call(window, "Execute", PadAction.Confirm);
+                    Check("Editor reaches Working directory from Arguments", () => Require(Keyboard.FocusedElement == programs.Editor!.FindName("EntryDirectory"), "Down then A did not focus Working directory"));
                     Capture(window, "tv-implemented-editor.png");
                     programs.Back();
                 }
@@ -128,10 +161,29 @@ internal static class FixedDesignChecks
     }
 
     private static void Require(bool value, string message) { if (!value) throw new Exception(message); }
+    private static IEnumerable<string> VisualText(DependencyObject parent)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is TextBlock text && text.IsVisible) yield return text.Text;
+            foreach (var nested in VisualText(child)) yield return nested;
+        }
+    }
+    private static T? VisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match) return match;
+            if (VisualChild<T>(child) is T nested) return nested;
+        }
+        return null;
+    }
     private static object? Call(object instance, string name, params object?[] args) => instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(instance, args);
     private static void Capture(Window window, string name)
     {
-        var frame = (FrameworkElement)window.FindName("WindowFrame");
+        var frame = (FrameworkElement)window.FindName("AppRoot");
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(frame.ActualWidth), (int)Math.Ceiling(frame.ActualHeight), 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(frame);
         Directory.CreateDirectory("artifacts");

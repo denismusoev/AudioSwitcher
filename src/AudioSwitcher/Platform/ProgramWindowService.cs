@@ -14,7 +14,7 @@ public sealed class ProgramWindowService
 
     internal static IReadOnlyList<RunningProgram> GetPrograms(CancellationToken cancellationToken)
     {
-        var groups = new Dictionary<ProcessIdentity, (string Name, List<WindowTarget> Windows)>();
+        var groups = new Dictionary<string, (string Name, List<WindowTarget> Windows)>(StringComparer.OrdinalIgnoreCase);
         var cache = new Dictionary<int, (ProcessIdentity Identity, string Image, bool Allowed)>();
         var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         bool enumerated = ProgramNative.EnumWindows((window, _) => {
@@ -42,14 +42,14 @@ public sealed class ProgramWindowService
                 string name = string.IsNullOrWhiteSpace(title.ToString()) ? Path.GetFileNameWithoutExtension(process.Image) : title.ToString();
                 var monitor = ProgramNative.Monitor(ProgramNative.MonitorFromWindow(window, 2));
                 string screen = monitor.Device.Replace("\\\\.\\DISPLAY", "Экран ") + ((monitor.Flags & 1) != 0 ? " · Главный" : "");
-                if (!groups.TryGetValue(process.Identity, out var group))
+                if (!groups.TryGetValue(process.Image, out var group))
                 {
                     if (!names.TryGetValue(process.Image, out string? applicationName))
                     {
                         applicationName = ApplicationName(process.Image);
                         names.Add(process.Image, applicationName);
                     }
-                    group = (applicationName, []); groups.Add(process.Identity, group);
+                    group = (applicationName, []); groups.Add(process.Image, group);
                 }
                 group.Windows.Add(new(process.Identity, window, name, screen, ProgramNative.IsHungAppWindow(window)));
             }
@@ -58,7 +58,8 @@ public sealed class ProgramWindowService
         }, 0);
         cancellationToken.ThrowIfCancellationRequested();
         if (!enumerated) throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows не предоставила доступ к списку окон текущего рабочего стола");
-        return groups.Select(g => new RunningProgram(g.Key, g.Value.Name, g.Value.Windows.OrderBy(w => w.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(w => w.Handle).ToArray()))
+        return groups.Select(g => new RunningProgram(g.Value.Windows[0].Process, g.Value.Name,
+                g.Value.Windows.OrderBy(w => w.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(w => w.Handle).ToArray(), ApplicationKey: g.Key))
             .GroupBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).SelectMany(group => group.Select(p => p with { Distinguish = group.Count() > 1 }))
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(p => p.Identity.Pid).ToArray();
     }

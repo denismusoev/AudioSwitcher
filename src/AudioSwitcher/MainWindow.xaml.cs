@@ -278,6 +278,8 @@ public partial class MainWindow : Window
             case PadAction.NextSection: SwitchSection((AppSection)(((int)navigation.Section + 1) % 3)); break;
             case PadAction.Up: if (navigation.Section == AppSection.Control) MoveControl(-1); else Programs.Move(-1); break;
             case PadAction.Down: if (navigation.Section == AppSection.Control) MoveControl(1); else Programs.Move(1); break;
+            case PadAction.Left: if (Programs.Editing) Programs.MoveHorizontal(-1); break;
+            case PadAction.Right: if (Programs.Editing) Programs.MoveHorizontal(1); break;
             case PadAction.Confirm:
                 if (navigation.Section == AppSection.Control) OpenDevicePicker(Keyboard.FocusedElement == DisplayControlCard);
                 else _ = Programs.ConfirmAsync();

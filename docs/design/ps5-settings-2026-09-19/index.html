@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>AudioSwitcher — PS5 Settings concept</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090c14;
+      --surface: #1a1c23;
+      --surface-hover: #24262e;
+      --text: #e8e6ea;
+      --muted: #aaa7af;
+      --quiet: #777681;
+      --line: #35343d;
+      --focus: #aaa7b4;
+      --focus-fill: rgba(205, 197, 203, .095);
+      --danger: #d9a2aa;
+      --space-xs: .5rem;
+      --space-sm: .75rem;
+      --space-md: 1rem;
+      --space-lg: 1.5rem;
+      --space-xl: 2rem;
+      --space-2xl: 3rem;
+      --space-3xl: 4rem;
+      --type-caption: 1rem;
+      --type-secondary: 1.25rem;
+      --type-body: 1.5rem;
+      --type-row: 1.75rem;
+      --type-title: 3rem;
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      font-optical-sizing: auto;
+      font-kerning: normal;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      min-width: 960px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    button { font: inherit; }
+
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      min-height: 640px;
+      overflow: hidden;
+      background:
+        radial-gradient(54rem 48rem at 12% 8%, rgba(132, 110, 109, .55), transparent 68%),
+        radial-gradient(48rem 42rem at 18% 92%, rgba(80, 101, 116, .5), transparent 66%),
+        radial-gradient(52rem 50rem at 48% 56%, rgba(71, 66, 72, .27), transparent 72%),
+        linear-gradient(108deg, #17191f 0%, #10141d 48%, #080b13 100%);
+    }
+
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(90deg, rgba(255,255,255,.015), transparent 34%, rgba(0,0,0,.16));
+      opacity: .7;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      padding: 5.5vh 5.4vw 3.2vh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    .app-title {
+      margin: 0;
+      font-size: var(--type-title);
+      line-height: 1.15;
+      font-weight: 300;
+      letter-spacing: -.012em;
+    }
+
+    .workspace {
+      min-height: 0;
+      margin-top: 4.8vh;
+      display: grid;
+      grid-template-columns: minmax(18rem, 28%) minmax(0, 1fr);
+      gap: 5.6vw;
+    }
+
+    .section-nav {
+      align-self: start;
+      display: grid;
+      gap: var(--space-md);
+    }
+
+    .nav-item {
+      min-height: 6rem;
+      padding: 0 var(--space-xl);
+      border: 2px solid transparent;
+      border-radius: 3px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      font-size: var(--type-row);
+      font-weight: 350;
+      line-height: 1.25;
+      cursor: pointer;
+      transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
+    }
+
+    .nav-item:hover { background: rgba(255,255,255,.035); }
+
+    .nav-item[aria-current="page"],
+    .nav-item:focus-visible {
+      outline: 0;
+      border-color: var(--focus);
+      background: var(--focus-fill);
+    }
+
+    .panel {
+      position: relative;
+      min-width: 0;
+      max-width: 76rem;
+      align-self: start;
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    .screen-intro {
+      min-height: 5.25rem;
+      margin: 0 0 var(--space-lg);
+      max-width: 68ch;
+      color: var(--muted);
+      font-size: var(--type-secondary);
+      line-height: 1.5;
+      font-weight: 350;
+    }
+
+    .screen-heading {
+      margin: 0;
+      min-height: 5.25rem;
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      font-size: var(--type-row);
+      font-weight: 350;
+    }
+
+    .settings-list {
+      display: grid;
+    }
+
+    .setting-row {
+      position: relative;
+      width: 100%;
+      min-height: 6.5rem;
+      padding: 0 var(--space-md);
+      border: 2px solid transparent;
+      border-bottom: 1px solid var(--line);
+      border-radius: 3px;
+      background: transparent;
+      color: var(--text);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+      align-items: center;
+      gap: var(--space-xl);
+      text-align: left;
+      cursor: pointer;
+      transition: background-color 160ms ease-out, border-color 160ms ease-out;
+    }
+
+    .setting-row:hover { background: rgba(255,255,255,.025); }
+
+    .setting-row.focused,
+    .setting-row:focus-visible {
+      outline: 0;
+      border-color: var(--focus);
+      background: var(--focus-fill);
+    }
+
+    .setting-row.focused + .setting-row { border-top-color: transparent; }
+
+    .row-copy { min-width: 0; }
+
+    .row-title {
+      display: block;
+      font-size: var(--type-row);
+      line-height: 1.25;
+      font-weight: 350;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-detail {
+      display: block;
+      margin-top: var(--space-xs);
+      color: var(--muted);
+      font-size: var(--type-caption);
+      line-height: 1.4;
+      font-weight: 350;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-value {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-lg);
+      color: var(--muted);
+      font-size: var(--type-secondary);
+      line-height: 1.3;
+      font-weight: 350;
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .chevron {
+      width: .8rem;
+      height: .8rem;
+      border-top: 2px solid currentColor;
+      border-right: 2px solid currentColor;
+      transform: rotate(45deg);
+      opacity: .85;
+    }
+
+    .toggle {
+      width: 3.8rem;
+      height: 2rem;
+      padding: .2rem;
+      border-radius: 999px;
+      background: #393b46;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+    }
+
+    .toggle::after {
+      content: "";
+      width: 1.55rem;
+      height: 1.55rem;
+      border: 2px solid #8f9099;
+      border-radius: 50%;
+      background: transparent;
+    }
+
+    .toggle.on { justify-content: flex-end; background: #636570; }
+    .toggle.on::after { background: #e1e0e4; border-color: #e1e0e4; }
+
+    .empty {
+      padding: var(--space-3xl) var(--space-md);
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: var(--type-secondary);
+      line-height: 1.5;
+    }
+
+    .picker {
+      position: absolute;
+      top: 5.25rem;
+      right: 0;
+      width: min(24rem, 38%);
+      padding: var(--space-sm) 0;
+      background: #181a21;
+      border: 1px solid rgba(170,167,180,.18);
+      box-shadow: 0 8px 10px rgba(0,0,0,.14);
+      display: none;
+    }
+
+    .picker.open {
+      display: block;
+    }
+
+    .picker-option {
+      width: calc(100% - 1rem);
+      min-height: 5.25rem;
+      margin: 0 .5rem;
+      padding: 0 var(--space-lg);
+      border: 2px solid transparent;
+      border-radius: 3px;
+      background: transparent;
+      color: var(--text);
+      display: grid;
+      grid-template-columns: 2rem 1fr;
+      align-items: center;
+      font-size: var(--type-body);
+      font-weight: 350;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .picker-option:hover,
+    .picker-option:focus-visible {
+      outline: 0;
+      background: rgba(255,255,255,.04);
+    }
+
+    .picker-option.selected { border-color: var(--focus); background: var(--focus-fill); }
+    .check { font-size: var(--type-row); font-weight: 300; }
+
+    .footer {
+      min-height: 3rem;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      gap: var(--space-xl);
+      color: var(--muted);
+    }
+
+    .hint {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      font-size: var(--type-caption);
+      white-space: nowrap;
+    }
+
+    .key {
+      min-width: 2rem;
+      height: 2rem;
+      padding: 0 .45rem;
+      border: 1.5px solid currentColor;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .key.wide { border-radius: 4px; }
+
+    @media (max-width: 1280px), (max-height: 760px) {
+      :root {
+        --type-caption: .875rem;
+        --type-secondary: 1.1rem;
+        --type-body: 1.25rem;
+        --type-row: 1.45rem;
+        --type-title: 2.5rem;
+      }
+      .app { padding-top: 4.5vh; }
+      .workspace { margin-top: 3.5vh; }
+      .nav-item { min-height: 4.8rem; }
+      .setting-row { min-height: 5.15rem; }
+      .screen-heading, .screen-intro { min-height: 4rem; }
+      .picker { top: 4rem; }
+      .picker-option { min-height: 4.25rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="app" aria-label="Интерактивный макет AudioSwitcher">
+      <h1 class="app-title">AudioSwitcher</h1>
+
+      <div class="workspace">
+        <nav class="section-nav" aria-label="Разделы AudioSwitcher">
+          <button class="nav-item" data-section="control" aria-current="page">Управление</button>
+          <button class="nav-item" data-section="running">Запущенные</button>
+          <button class="nav-item" data-section="launch">Для запуска</button>
+          <button class="nav-item" data-section="settings">Настройки</button>
+        </nav>
+
+        <section class="panel" aria-live="polite">
+          <div class="screen active" data-screen="control">
+            <h2 class="screen-heading">Быстрые действия</h2>
+            <div class="settings-list">
+              <button class="setting-row focused" data-action="audio">
+                <span class="row-copy"><span class="row-title">Устройство вывода</span><span class="row-detail">NVIDIA High Definition Audio</span></span>
+                <span class="row-value"><span>G27U</span><span class="chevron" aria-hidden="true"></span></span>
+              </button>
+              <button class="setting-row" data-action="display">
+                <span class="row-copy"><span class="row-title">Главный экран</span><span class="row-detail">3840 × 2160 · 144 Гц</span></span>
+                <span class="row-value"><span>G27U</span><span class="chevron" aria-hidden="true"></span></span>
+              </button>
+              <button class="setting-row" data-action="move">
+                <span class="row-copy"><span class="row-title">После переноса окна</span></span>
+                <span class="row-value"><span id="moveValue">Остаться в AudioSwitcher</span><span class="chevron" aria-hidden="true"></span></span>
+              </button>
+              <button class="setting-row" data-action="close-launch" aria-pressed="false">
+                <span class="row-copy"><span class="row-title">Закрывать после запуска</span></span>
+                <span class="row-value"><span class="toggle" aria-hidden="true"></span></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="screen" data-screen="running">
+            <p class="screen-intro">Выберите приложение, чтобы переместить его окно на главный экран или закрыть.</p>
+            <div class="settings-list">
+              <button class="setting-row focused"><span class="row-copy"><span class="row-title">Steam</span><span class="row-detail">Библиотека · Экран 2</span></span><span class="row-value">1 окно<span class="chevron"></span></span></button>
+              <button class="setting-row"><span class="row-copy"><span class="row-title">Moonlight</span><span class="row-detail">Moonlight Game Streaming · Экран 1</span></span><span class="row-value">1 окно<span class="chevron"></span></span></button>
+              <button class="setting-row"><span class="row-copy"><span class="row-title">Проводник</span><span class="row-detail">Загрузки · Экран 2</span></span><span class="row-value">2 окна<span class="chevron"></span></span></button>
+              <button class="setting-row"><span class="row-copy"><span class="row-title">Discord</span><span class="row-detail">Друзья · Экран 1</span></span><span class="row-value">1 окно<span class="chevron"></span></span></button>
+            </div>
+          </div>
+
+          <div class="screen" data-screen="launch">
+            <p class="screen-intro">Запускайте сохранённые программы и ссылки без возврата к рабочему столу Windows.</p>
+            <div class="settings-list">
+              <button class="setting-row focused"><span class="row-copy"><span class="row-title">Steam</span><span class="row-detail">Игры и библиотека</span></span><span class="row-value">Программа<span class="chevron"></span></span></button>
+              <button class="setting-row"><span class="row-copy"><span class="row-title">Moonlight</span><span class="row-detail">Потоковая передача с игрового ПК</span></span><span class="row-value">Программа<span class="chevron"></span></span></button>
+              <button class="setting-row"><span class="row-copy"><span class="row-title">Plex</span><span class="row-detail">Домашняя медиатека</span></span><span class="row-value">Ссылка<span class="chevron"></span></span></button>
+              <button class="setting-row"><span class="row-copy"><span class="row-title">Добавить программу</span></span><span class="row-value"><span class="chevron"></span></span></button>
+            </div>
+          </div>
+
+          <div class="screen" data-screen="settings">
+            <p class="screen-intro">Поведение приложения после выполнения действий.</p>
+            <div class="settings-list">
+              <button class="setting-row focused" data-action="move">
+                <span class="row-copy"><span class="row-title">После переноса окна</span></span>
+                <span class="row-value">Остаться в AudioSwitcher<span class="chevron"></span></span>
+              </button>
+              <button class="setting-row" data-action="close-launch" aria-pressed="false">
+                <span class="row-copy"><span class="row-title">Закрывать после запуска</span></span>
+                <span class="row-value"><span class="toggle"></span></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="picker" id="picker" role="dialog" aria-label="Выбор устройства" aria-hidden="true" inert>
+            <button class="picker-option"><span></span><span>Динамики</span></button>
+            <button class="picker-option selected"><span class="check">✓</span><span>G27U</span></button>
+            <button class="picker-option"><span></span><span>Наушники</span></button>
+          </div>
+        </section>
+      </div>
+
+      <footer class="footer" aria-label="Подсказки управления">
+        <span class="hint"><span class="key">A</span>Выбрать</span>
+        <span class="hint"><span class="key wide">LB / RB</span>Раздел</span>
+        <span class="hint"><span class="key">B</span>Назад</span>
+      </footer>
+    </section>
+  </main>
+
+  <script>
+    const navItems = [...document.querySelectorAll('.nav-item')];
+    const screens = [...document.querySelectorAll('.screen')];
+    const picker = document.querySelector('#picker');
+    let activeSection = new URLSearchParams(location.search).get('screen') || 'control';
+
+    function rows() {
+      return [...document.querySelectorAll(`.screen[data-screen="${activeSection}"] .setting-row`)];
+    }
+
+    function focusRow(target) {
+      rows().forEach(row => row.classList.toggle('focused', row === target));
+    }
+
+    function setPicker(open) {
+      picker.classList.toggle('open', open);
+      picker.setAttribute('aria-hidden', String(!open));
+      picker.toggleAttribute('inert', !open);
+    }
+
+    function showSection(id) {
+      if (!screens.some(screen => screen.dataset.screen === id)) id = 'control';
+      activeSection = id;
+      navItems.forEach(item => item.setAttribute('aria-current', item.dataset.section === id ? 'page' : 'false'));
+      screens.forEach(screen => screen.classList.toggle('active', screen.dataset.screen === id));
+      setPicker(false);
+      const first = rows()[0];
+      if (first) focusRow(first);
+      history.replaceState(null, '', `?screen=${id}`);
+    }
+
+    function activate(row) {
+      const action = row.dataset.action;
+      if (action === 'audio' || action === 'display') {
+        picker.setAttribute('aria-label', action === 'audio' ? 'Выбор устройства вывода' : 'Выбор главного экрана');
+        setPicker(!picker.classList.contains('open'));
+        return;
+      }
+      if (action === 'move') {
+        const values = row.querySelectorAll('.row-value');
+        values.forEach(value => {
+          value.childNodes[0].textContent = value.textContent.includes('Остаться') ? 'Переключиться на приложение' : 'Остаться в AudioSwitcher';
+        });
+        return;
+      }
+      if (action === 'close-launch') {
+        const next = row.getAttribute('aria-pressed') !== 'true';
+        row.setAttribute('aria-pressed', String(next));
+        row.querySelector('.toggle').classList.toggle('on', next);
+      }
+    }
+
+    navItems.forEach(item => item.addEventListener('click', () => showSection(item.dataset.section)));
+    document.addEventListener('click', event => {
+      const row = event.target.closest('.setting-row');
+      if (row) { focusRow(row); activate(row); }
+      const option = event.target.closest('.picker-option');
+      if (option) {
+        document.querySelectorAll('.picker-option').forEach(item => item.classList.remove('selected'));
+        option.classList.add('selected');
+        setPicker(false);
+      }
+    });
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' || event.key.toLowerCase() === 'b') {
+        setPicker(false);
+        return;
+      }
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        const current = navItems.findIndex(item => item.dataset.section === activeSection);
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        showSection(navItems[(current + direction + navItems.length) % navItems.length].dataset.section);
+        event.preventDefault();
+        return;
+      }
+      const list = rows();
+      const current = list.findIndex(row => row.classList.contains('focused'));
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const direction = event.key === 'ArrowDown' ? 1 : -1;
+        const next = list[(current + direction + list.length) % list.length];
+        focusRow(next);
+        next.focus({ preventScroll: true });
+        event.preventDefault();
+      }
+      if ((event.key === 'Enter' || event.key.toLowerCase() === 'a') && list[current]) {
+        activate(list[current]);
+        event.preventDefault();
+      }
+    });
+
+    showSection(activeSection);
+  </script>
+</body>
+</html>

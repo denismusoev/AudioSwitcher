@@ -7,8 +7,9 @@ public sealed record WindowTarget(ProcessIdentity Process, nint Handle, string T
     public string DisplayName => Title;
     public string DisplayDetails => Screen + (NotResponding ? " · Не отвечает" : "");
 }
-public sealed record RunningProgram(ProcessIdentity Identity, string Name, IReadOnlyList<WindowTarget> Windows, bool Distinguish = false)
+public sealed record RunningProgram(ProcessIdentity Identity, string Name, IReadOnlyList<WindowTarget> Windows, bool Distinguish = false, string ApplicationKey = "")
 {
+    public string Key => string.IsNullOrEmpty(ApplicationKey) ? Identity.ToString() : ApplicationKey;
     public string DisplayName => Name;
     public string ScreenSummary => (Summary.Length > 0 ? Summary + " · " : "") + string.Join(", ", Windows.Select(w => w.Screen).Distinct());
     public string Summary

@@ -10,7 +10,7 @@ public enum AppSection
     Displays = Launch,
     Settings = Launch
 }
-public enum ProgramPanel { List, Actions, Windows, ConfirmTermination, ConfirmDelete, ConfirmReset }
+public enum ProgramPanel { List, Actions, Windows, CloseWindows, ConfirmDelete, ConfirmReset }
 public sealed class NavigationState
 {
     public AppSection Section { get; set; }
