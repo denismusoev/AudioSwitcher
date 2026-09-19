@@ -63,23 +63,21 @@ Check("Window placement accepts a mostly contained frame and rejects a sliver", 
     if (ProgramWindowLayout.IsSufficientlyOnScreen(new(980, 100, 500, 500), area, 3)) throw new Exception("Mostly off-screen frame was accepted");
 });
 Check("Program panels cancel before closing the application", () => {
-    var navigation = new NavigationState { Section = AppSection.Programs, Panel = ProgramPanel.ConfirmTermination };
-    Equal(true, navigation.Back()); Equal(ProgramPanel.Actions, navigation.Panel);
+    var navigation = new NavigationState { Section = AppSection.Running, Panel = ProgramPanel.ConfirmTermination };
     Equal(true, navigation.Back()); Equal(ProgramPanel.List, navigation.Panel);
     Equal(false, navigation.Back());
     navigation.Panel = ProgramPanel.Windows;
-    Equal(false, navigation.ChangeSection(-1)); Equal(AppSection.Programs, navigation.Section);
-    Equal(true, navigation.Back()); Equal(ProgramPanel.Actions, navigation.Panel);
+    Equal(false, navigation.ChangeSection(-1)); Equal(AppSection.Running, navigation.Section);
+    Equal(true, navigation.Back()); Equal(ProgramPanel.List, navigation.Panel);
 });
-Check("Four sections and two program lists navigate independently", () => {
+Check("Three TV sections wrap with shoulder navigation", () => {
     var navigation = new NavigationState();
-    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Displays, navigation.Section);
-    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Programs, navigation.Section);
-    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Settings, navigation.Section);
-    Equal(false, navigation.ChangeSection(1)); Equal(false, navigation.ToggleList());
-    Equal(true, navigation.ChangeSection(-1)); Equal(AppSection.Programs, navigation.Section);
-    Equal(true, navigation.ToggleList()); Equal(true, navigation.LaunchList);
-    navigation.Panel = ProgramPanel.Actions; Equal(false, navigation.ToggleList());
+    Equal(AppSection.Control, navigation.Section);
+    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Running, navigation.Section);
+    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Launch, navigation.Section);
+    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Control, navigation.Section);
+    Equal(true, navigation.ChangeSection(-1)); Equal(AppSection.Launch, navigation.Section);
+    navigation.Panel = ProgramPanel.Actions; Equal(false, navigation.ChangeSection(-1));
 });
 Check("Confirmation is rearmed only after all gamepad controls are released", () => {
     var gate = new InputGate();
@@ -91,10 +89,13 @@ Check("Confirmation is rearmed only after all gamepad controls are released", ()
     Equal(true, gate.Accept(PadAction.Confirm, 1400));
     Equal(false, gate.Accept(PadAction.Confirm, 2000));
 });
-Check("List toggle does not repeat while X is held", () => {
+Check("TV shortcut actions do not repeat while held", () => {
     var gate = new InputGate();
-    Equal(true, gate.Accept(PadAction.ToggleList, 0));
-    Equal(false, gate.Accept(PadAction.ToggleList, 900));
+    Equal(true, gate.Accept(PadAction.Secondary, 0));
+    Equal(false, gate.Accept(PadAction.Secondary, 900));
+    gate.Accept(PadAction.None, 910);
+    Equal(true, gate.Accept(PadAction.Settings, 920));
+    Equal(false, gate.Accept(PadAction.Settings, 1500));
 });
 Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: 0");
 return failed == 0 ? 0 : 1;

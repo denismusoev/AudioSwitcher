@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AudioSwitcher — компактная ТВ-версия</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --backdrop: #0d1014;
+      --shell: #191c21;
+      --shell-top: #2a2f37;
+      --surface: #22272f;
+      --surface-selected: rgba(255,255,255,.045);
+      --text: #f2f4f7;
+      --muted: #bcc3cf;
+      --line: #747780;
+      --focus: #f2f4f7;
+      --danger: #e8b9b3;
+      --radius: 12px;
+      font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      background:
+        radial-gradient(1000px 700px at 76% 13%, rgba(77,86,99,.24), transparent 68%),
+        radial-gradient(900px 600px at 21% 85%, rgba(33,38,45,.34), transparent 70%),
+        var(--backdrop);
+      color: var(--text);
+    }
+    button { font: inherit; color: inherit; }
+    .stage {
+      width: 1920px;
+      height: 1080px;
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+    .shell {
+      width: 1220px;
+      height: 760px;
+      border-radius: var(--radius);
+      background: radial-gradient(900px 620px at 86% 2%, var(--shell-top), var(--shell) 72%);
+      box-shadow: 0 8px 24px rgba(0,0,0,.24);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 114px 1fr 86px;
+      position: relative;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      padding: 0 54px;
+      border-bottom: 1px solid rgba(116,119,128,.24);
+      gap: 26px;
+    }
+    .shoulder {
+      min-width: 47px;
+      height: 34px;
+      padding: 0 10px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1;
+    }
+    .tabs { display: flex; align-items: center; gap: 48px; flex: 1; }
+    .tab {
+      appearance: none;
+      background: none;
+      border: 0;
+      padding: 10px 0;
+      color: var(--muted);
+      font-size: 29px;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+    .tab.active { color: var(--text); font-weight: 600; }
+    .brand { color: var(--muted); font-size: 17px; letter-spacing: .02em; margin-left: auto; }
+    .content { padding: 42px 54px 32px; overflow: hidden; }
+    .screen { height: 100%; display: none; }
+    .screen.active { display: block; }
+    .context {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 26px;
+    }
+    h1 { margin: 0; font-size: 27px; line-height: 1.25; font-weight: 600; letter-spacing: -.015em; }
+    .context-note { color: var(--muted); font-size: 18px; }
+    .rows { display: grid; gap: 10px; }
+    .row {
+      min-height: 100px;
+      border: 3px solid transparent;
+      border-radius: 8px;
+      padding: 17px 22px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 24px;
+      background: transparent;
+    }
+    .row.focused { border-color: var(--focus); background: var(--surface-selected); }
+    .row-title { font-size: 27px; line-height: 1.2; font-weight: 500; }
+    .row-subtitle { color: var(--muted); font-size: 18px; line-height: 1.35; margin-top: 5px; }
+    .row-meta { color: var(--muted); font-size: 18px; white-space: nowrap; text-align: right; }
+    .row-meta.strong { color: var(--text); }
+    .micro { color: var(--muted); font-size: 17px; margin-bottom: 6px; }
+    .footer {
+      border-top: 1px solid rgba(116,119,128,.72);
+      padding: 0 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .status { color: var(--muted); font-size: 17px; min-width: 220px; }
+    .hints { display: flex; align-items: center; gap: 29px; margin-left: auto; }
+    .hint { display: flex; align-items: center; gap: 9px; color: var(--text); font-size: 18px; white-space: nowrap; }
+    .key {
+      min-width: 31px;
+      height: 31px;
+      padding: 0 7px;
+      display: inline-grid;
+      place-items: center;
+      border: 1.5px solid var(--muted);
+      border-radius: 999px;
+      color: var(--text);
+      font-size: 16px;
+      line-height: 1;
+    }
+    .key.rect { border-radius: 6px; min-width: 42px; }
+    .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .quick-row { min-height: 166px; align-content: center; padding: 24px 26px; }
+    .quick-row .row-title { font-size: 31px; }
+    .quick-row .row-subtitle { max-width: 430px; }
+    .quick-row .row-meta { align-self: start; margin-top: 5px; }
+    .section-label { color: var(--muted); font-size: 17px; margin-bottom: 9px; }
+    .list-screen .rows { gap: 6px; }
+    .list-screen .row { min-height: 84px; padding-top: 13px; padding-bottom: 13px; }
+    .list-screen .row-title { font-size: 24px; }
+    .list-screen .row-subtitle { font-size: 17px; margin-top: 3px; }
+    .overlay-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(4,6,9,.68);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(7px);
+    }
+    .overlay-backdrop.active { display: flex; }
+    .overlay {
+      width: 760px;
+      background: #222428;
+      border-radius: 12px;
+      padding: 34px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.34);
+    }
+    .overlay.wide { width: 820px; }
+    .overlay-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 22px; }
+    .overlay h2 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.01em; }
+    .overlay-note { color: var(--muted); font-size: 17px; }
+    .overlay .row { min-height: 86px; padding: 14px 18px; }
+    .overlay .row-title { font-size: 23px; }
+    .overlay .row-subtitle, .overlay .row-meta { font-size: 16px; }
+    .overlay-actions { display: flex; justify-content: flex-end; gap: 22px; margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(116,119,128,.45); }
+    .choice-title { font-size: 24px; font-weight: 500; }
+    .choice-copy { color: var(--muted); font-size: 17px; margin-top: 5px; max-width: 620px; }
+    .radio { width: 24px; height: 24px; border: 2px solid var(--muted); border-radius: 50%; position: relative; }
+    .selected .radio::after { content: ""; position: absolute; inset: 5px; background: var(--text); border-radius: 50%; }
+    .child-title { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 26px; }
+    .child-title p { margin: 0; color: var(--muted); font-size: 18px; }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+    .field {
+      min-height: 105px;
+      padding: 17px 20px;
+      border: 3px solid transparent;
+      border-radius: 8px;
+      background: rgba(255,255,255,.018);
+    }
+    .field.focused { border-color: var(--focus); background: var(--surface-selected); }
+    .field.wide { grid-column: 1 / -1; }
+    .field-label { color: var(--muted); font-size: 16px; margin-bottom: 8px; }
+    .field-value { font-size: 23px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .empty-state { height: 380px; display: grid; place-items: center; text-align: center; }
+    .empty-state h2 { margin: 0; font-size: 29px; font-weight: 600; }
+    .empty-state p { margin: 10px auto 0; max-width: 560px; color: var(--muted); font-size: 18px; line-height: 1.5; }
+    .empty-action { margin-top: 24px; display: inline-flex; align-items: center; gap: 9px; font-size: 18px; }
+    .overlay.compact { width: 680px; }
+    .confirm-copy { color: var(--muted); font-size: 18px; line-height: 1.5; margin: 0 0 23px; }
+    .confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .confirm-action { min-height: 70px; display: grid; place-items: center; border: 3px solid transparent; border-radius: 8px; font-size: 20px; }
+    .confirm-action.focused { border-color: var(--focus); background: var(--surface-selected); }
+    .confirm-action.danger { color: var(--danger); }
+    .error-code { color: var(--muted); font-size: 16px; margin: 6px 0 22px; }
+    .error-copy { padding: 18px 20px; background: rgba(255,255,255,.025); border-radius: 8px; color: var(--text); font-size: 18px; line-height: 1.5; }
+    .screen-id {
+      position: absolute;
+      left: 64px;
+      bottom: 42px;
+      color: rgba(188,195,207,.5);
+      font-size: 15px;
+      letter-spacing: .02em;
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="shell" aria-label="Макет AudioSwitcher для телевизора">
+      <header class="topbar">
+        <span class="shoulder">LB</span>
+        <nav class="tabs" aria-label="Разделы">
+          <button class="tab" data-tab="control">Управление</button>
+          <button class="tab" data-tab="running">Запущенные</button>
+          <button class="tab" data-tab="launch">Для запуска</button>
+        </nav>
+        <span class="shoulder">RB</span>
+        <span class="brand">AudioSwitcher</span>
+      </header>
+
+      <div class="content">
+        <section class="screen" data-screen="control">
+          <div class="context"><h1>Управление</h1><span class="context-note">Два быстрых действия</span></div>
+          <div class="quick-grid">
+            <article class="row quick-row focused">
+              <div><div class="micro">Вывод звука</div><div class="row-title">G27U</div><div class="row-subtitle">NVIDIA High Definition Audio</div></div>
+              <div class="row-meta strong">Активно</div>
+            </article>
+            <article class="row quick-row">
+              <div><div class="micro">Главный экран</div><div class="row-title">G27U</div><div class="row-subtitle">3840 × 2160 · 144 Гц</div></div>
+              <div class="row-meta strong">Главный</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="screen list-screen" data-screen="running">
+          <div class="context"><h1>Запущенные</h1><span class="context-note">4 приложения</span></div>
+          <div class="rows">
+            <article class="row focused"><div><div class="row-title">Steam</div><div class="row-subtitle">Библиотека · Экран 2</div></div><div class="row-meta">1 окно</div></article>
+            <article class="row"><div><div class="row-title">Moonlight</div><div class="row-subtitle">Moonlight Game Streaming · Экран 1</div></div><div class="row-meta">1 окно</div></article>
+            <article class="row"><div><div class="row-title">Проводник</div><div class="row-subtitle">Загрузки · Экран 2</div></div><div class="row-meta">2 окна</div></article>
+            <article class="row"><div><div class="row-title">Discord</div><div class="row-subtitle">Друзья · Экран 1</div></div><div class="row-meta">1 окно</div></article>
+          </div>
+        </section>
+
+        <section class="screen list-screen" data-screen="launch">
+          <div class="context"><h1>Для запуска</h1><span class="context-note">Ваш каталог</span></div>
+          <div class="rows">
+            <article class="row focused"><div><div class="row-title">Steam</div><div class="row-subtitle">Игры и библиотека</div></div><div class="row-meta">Программа</div></article>
+            <article class="row"><div><div class="row-title">Moonlight</div><div class="row-subtitle">Потоковая передача с игрового ПК</div></div><div class="row-meta">Программа</div></article>
+            <article class="row"><div><div class="row-title">Plex</div><div class="row-subtitle">Домашняя медиатека</div></div><div class="row-meta">Ссылка</div></article>
+            <article class="row"><div><div class="row-title">YouTube</div><div class="row-subtitle">youtube.com/tv</div></div><div class="row-meta">Ссылка</div></article>
+          </div>
+        </section>
+
+        <section class="screen list-screen" data-screen="window">
+          <div class="child-title"><div><div class="micro">Steam</div><h1>Какое окно переместить?</h1></div><p>На главный экран</p></div>
+          <div class="rows">
+            <article class="row focused"><div><div class="row-title">Библиотека</div><div class="row-subtitle">Экран 2</div></div><div class="row-meta">Готово</div></article>
+            <article class="row"><div><div class="row-title">Настройки Steam</div><div class="row-subtitle">Экран 2</div></div><div class="row-meta">Готово</div></article>
+            <article class="row"><div><div class="row-title">Друзья и чат</div><div class="row-subtitle">Экран 1</div></div><div class="row-meta">Готово</div></article>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="editor">
+          <div class="child-title"><div><div class="micro">Каталог запуска</div><h1>Редактировать программу</h1></div><p>Steam</p></div>
+          <div class="fields">
+            <article class="field focused"><div class="field-label">Название</div><div class="field-value">Steam</div></article>
+            <article class="field"><div class="field-label">Тип</div><div class="field-value">Программа или ярлык</div></article>
+            <article class="field wide"><div class="field-label">Программа или ярлык</div><div class="field-value">C:\Program Files (x86)\Steam\steam.exe</div></article>
+            <article class="field"><div class="field-label">Аргументы · необязательно</div><div class="field-value">—</div></article>
+            <article class="field"><div class="field-label">Рабочая папка · необязательно</div><div class="field-value">C:\Program Files (x86)\Steam</div></article>
+          </div>
+        </section>
+
+        <section class="screen" data-screen="empty">
+          <div class="context"><h1>Для запуска</h1><span class="context-note">Ваш каталог</span></div>
+          <div class="empty-state"><div><h2>Каталог пока пуст</h2><p>Добавьте программы, ярлыки или ссылки, чтобы запускать их с телевизора без рабочего стола Windows.</p><div class="empty-action"><span class="key">Y</span>Добавить первую запись</div></div></div>
+        </section>
+      </div>
+
+      <footer class="footer">
+        <div class="status" data-status>Готово</div>
+        <div class="hints" data-hints></div>
+      </footer>
+
+      <div class="overlay-backdrop" data-overlay="picker">
+        <section class="overlay" aria-label="Выбор устройства вывода">
+          <div class="overlay-head"><h2>Вывод звука</h2><span class="overlay-note">Выберите устройство</span></div>
+          <div class="rows">
+            <article class="row"><div><div class="row-title">Динамики</div><div class="row-subtitle">fifine Microphone</div></div></article>
+            <article class="row focused"><div><div class="row-title">G27U</div><div class="row-subtitle">NVIDIA High Definition Audio</div></div><div class="row-meta strong">Активно</div></article>
+            <article class="row"><div><div class="row-title">Наушники</div><div class="row-subtitle">Oculus Virtual Audio Device</div></div></article>
+          </div>
+          <div class="overlay-actions"><span class="hint"><span class="key">A</span>Применить</span><span class="hint"><span class="key">B</span>Назад</span></div>
+        </section>
+      </div>
+
+      <div class="overlay-backdrop" data-overlay="settings">
+        <section class="overlay wide" aria-label="Настройки">
+          <div class="overlay-head"><h2>После переноса окна</h2><span class="overlay-note">Настройки</span></div>
+          <div class="rows">
+            <article class="row focused selected"><div><div class="choice-title">Остаться в AudioSwitcher</div><div class="choice-copy">Окно переместится без передачи фокуса. AudioSwitcher останется открытым и активным.</div></div><span class="radio"></span></article>
+            <article class="row"><div><div class="choice-title">Переключиться в приложение</div><div class="choice-copy">Перемещённое приложение получит фокус, а AudioSwitcher закроется.</div></div><span class="radio"></span></article>
+          </div>
+          <div class="overlay-actions"><span class="hint"><span class="key">A</span>Выбрать</span><span class="hint"><span class="key">B</span>Закрыть</span></div>
+        </section>
+      </div>
+
+      <div class="overlay-backdrop" data-overlay="display">
+        <section class="overlay" aria-label="Выбор главного экрана">
+          <div class="overlay-head"><h2>Главный экран</h2><span class="overlay-note">Выберите монитор</span></div>
+          <div class="rows">
+            <article class="row focused"><div><div class="row-title">G27U</div><div class="row-subtitle">3840 × 2160 · 144 Гц</div></div><div class="row-meta strong">Главный</div></article>
+            <article class="row"><div><div class="row-title">LG TV</div><div class="row-subtitle">3840 × 2160 · 60 Гц</div></div><div class="row-meta">Экран 2</div></article>
+            <article class="row"><div><div class="row-title">DELL U2412M</div><div class="row-subtitle">1920 × 1200 · 60 Гц</div></div><div class="row-meta">Экран 3</div></article>
+          </div>
+          <div class="overlay-actions"><span class="hint"><span class="key">A</span>Сделать главным</span><span class="hint"><span class="key">B</span>Назад</span></div>
+        </section>
+      </div>
+
+      <div class="overlay-backdrop" data-overlay="confirm-close">
+        <section class="overlay compact" aria-label="Подтверждение закрытия приложения">
+          <div class="overlay-head"><h2>Закрыть Steam?</h2><span class="overlay-note">1 окно</span></div>
+          <p class="confirm-copy">Несохранённые данные в приложении могут быть потеряны.</p>
+          <div class="confirm-actions"><div class="confirm-action focused">Отмена</div><div class="confirm-action danger">Закрыть Steam</div></div>
+        </section>
+      </div>
+
+      <div class="overlay-backdrop" data-overlay="confirm-delete">
+        <section class="overlay compact" aria-label="Подтверждение удаления записи">
+          <div class="overlay-head"><h2>Удалить «Steam»?</h2><span class="overlay-note">Каталог запуска</span></div>
+          <p class="confirm-copy">Запись исчезнет из AudioSwitcher. Сама программа и её файлы останутся на компьютере.</p>
+          <div class="confirm-actions"><div class="confirm-action focused">Отмена</div><div class="confirm-action danger">Удалить запись</div></div>
+        </section>
+      </div>
+
+      <div class="overlay-backdrop" data-overlay="error">
+        <section class="overlay" aria-label="Подробности ошибки">
+          <div class="overlay-head"><h2>Не удалось переключить звук</h2><span class="overlay-note">Ошибка</span></div>
+          <div class="error-code">Устройство: G27U</div>
+          <div class="error-copy">Windows не подтвердила смену устройства вывода. Проверьте, что монитор подключён и устройство доступно, затем повторите действие.</div>
+          <div class="overlay-actions"><span class="hint"><span class="key">A</span>Повторить</span><span class="hint"><span class="key">B</span>Закрыть</span></div>
+        </section>
+      </div>
+    </section>
+    <div class="screen-id" data-screen-id></div>
+  </main>
+
+  <script>
+    const query = new URLSearchParams(location.search);
+    const requested = query.get('screen') || 'control';
+    const baseMap = {
+      picker: 'control', display: 'control', settings: 'control', error: 'control',
+      'confirm-close': 'running', 'confirm-delete': 'launch', window: 'window', editor: 'editor', empty: 'empty'
+    };
+    const base = baseMap[requested] || requested;
+    const activeTab = base === 'window' ? 'running' : (base === 'editor' || base === 'empty' ? 'launch' : base);
+    const labels = {
+      control: '01 · Управление', running: '02 · Запущенные', launch: '03 · Для запуска',
+      picker: '04 · Выбор устройства', settings: '05 · Настройки', display: '06 · Выбор монитора',
+      window: '07 · Выбор окна', editor: '08 · Редактор записи', 'confirm-close': '09 · Подтверждение закрытия',
+      'confirm-delete': '10 · Подтверждение удаления', error: '11 · Ошибка', empty: '12 · Пустой каталог'
+    };
+    document.querySelectorAll('[data-screen]').forEach(el => el.classList.toggle('active', el.dataset.screen === base));
+    document.querySelectorAll('[data-tab]').forEach(el => el.classList.toggle('active', el.dataset.tab === activeTab));
+    document.querySelectorAll('[data-overlay]').forEach(el => el.classList.toggle('active', el.dataset.overlay === requested));
+    const hints = {
+      control: [['A','Выбрать'],['LB / RB','Раздел'],['Menu','Настройки'],['B','Закрыть']],
+      running: [['A','На главный экран'],['X','Закрыть'],['LB / RB','Раздел'],['B','Назад']],
+      launch: [['A','Запустить'],['X','Изменить'],['Y','Добавить'],['B','Назад']],
+      window: [['A','На главный экран'],['B','Назад']],
+      editor: [['A','Изменить поле'],['Y','Сохранить'],['X','Удалить'],['B','Назад']],
+      empty: [['Y','Добавить'],['B','Назад']]
+    };
+    document.querySelector('[data-hints]').innerHTML = (hints[base] || hints.control).map(([key,label]) => `<span class="hint"><span class="key ${key.length > 2 ? 'rect' : ''}">${key}</span>${label}</span>`).join('');
+    document.querySelector('[data-status]').textContent = base === 'control' ? 'Готово' : '';
+    document.querySelector('[data-screen-id]').textContent = labels[requested] || labels.control;
+  </script>
+</body>
+</html>

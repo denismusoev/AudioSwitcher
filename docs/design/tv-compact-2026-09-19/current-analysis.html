@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AudioSwitcher — анализ текущего интерфейса</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; min-height: 100%; background: #0d1014; color: #f2f4f7; font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+    body { background: radial-gradient(980px 700px at 84% 5%, #282e36, #0d1014 72%); }
+    main { width: 1920px; height: 1080px; padding: 64px 72px; display: grid; grid-template-columns: 1160px 1fr; gap: 58px; }
+    h1 { margin: 0 0 12px; font-size: 36px; font-weight: 600; letter-spacing: -.02em; }
+    .lead { margin: 0 0 28px; color: #bcc3cf; font-size: 19px; }
+    .shots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items: start; }
+    figure { margin: 0; }
+    .frame { background: #191c21; padding: 8px; border-radius: 10px; box-shadow: 0 6px 16px rgba(0,0,0,.24); }
+    img { display: block; width: 100%; height: auto; border-radius: 5px; }
+    figcaption { margin-top: 10px; color: #bcc3cf; font-size: 16px; }
+    aside { align-self: center; }
+    .block { padding: 24px 0; border-top: 1px solid #747780; }
+    .block:first-child { border-top: 0; }
+    h2 { margin: 0 0 13px; font-size: 23px; font-weight: 600; }
+    p { margin: 0; color: #bcc3cf; font-size: 18px; line-height: 1.5; }
+    .good { color: #f2f4f7; }
+    .tag { display: inline-block; margin-bottom: 10px; color: #bcc3cf; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <span class="tag">ТЕКУЩАЯ РЕАЛИЗАЦИЯ · WPF RENDERTARGETBITMAP</span>
+      <h1>Что переносим в ТВ-версию</h1>
+      <p class="lead">Снимки сделаны на тестовых данных: реальные устройства, приложения и настройки Windows не менялись.</p>
+      <div class="shots">
+        <figure><div class="frame"><img src="current-interface/01-sound.png" alt="Экран звука"></div><figcaption>Звук</figcaption></figure>
+        <figure><div class="frame"><img src="current-interface/02-catalogue.png" alt="Каталог запуска"></div><figcaption>Каталог</figcaption></figure>
+        <figure><div class="frame"><img src="current-interface/03-editor.png" alt="Редактор записи"></div><figcaption>Редактор</figcaption></figure>
+        <figure><div class="frame"><img src="current-interface/04-settings.png" alt="Настройки"></div><figcaption>Настройки</figcaption></figure>
+      </div>
+    </section>
+    <aside>
+      <div class="block"><h2>Сохранить</h2><p class="good">Графитовый радиальный фон, спокойную нейтральную палитру, Segoe UI, небольшие скругления и ясную белую рамку фокуса.</p></div>
+      <div class="block"><h2>Перестроить</h2><p>Окно 640×700 работает рядом с монитором, но на 16:9 оставляет ширину неиспользованной. ТВ-версия должна стать ландшафтной, не растягивая строки по всему экрану.</p></div>
+      <div class="block"><h2>Упростить</h2><p>Четыре верхних раздела и вложенные режимы «Программ» создают два уровня навигации. Ежедневные сценарии лучше сделать тремя равноправными разделами.</p></div>
+      <div class="block"><h2>Усилить для дивана</h2><p>Крупнее текст и высота цели, толще фокус, подписи физических кнопок и один overlay за раз. Состояние «Активно» остаётся отдельным от фокуса.</p></div>
+    </aside>
+  </main>
+</body>
+</html>

@@ -149,9 +149,9 @@ public partial class ProgramsView : UserControl
         EmptyPrograms.Text = Navigation.LaunchList ? catalog.CanSave ? "Добавьте программы для запуска" : "Каталог не прочитан. Исходный файл сохранён" : "Нет запущенных приложений с окнами";
         EmptyPrograms.Visibility = (Navigation.LaunchList ? LaunchList : RunningList).Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
-    public void SelectMode(bool launch)
+    public void SelectMode(bool launch, bool force = false)
     {
-        if (InPanel || IsBusy || Navigation.LaunchList == launch) return;
+        if (InPanel || IsBusy || (!force && Navigation.LaunchList == launch)) return;
         Navigation.LaunchList = launch; UpdateLists();
         if (launch)
         {
@@ -203,7 +203,11 @@ public partial class ProgramsView : UserControl
             { currentEntry = row.Entry; currentProgram = null;
                 if (await RunOperation("Открытие…", async token => { await launcher.LaunchAsync(currentEntry, token); return new(ProgramResultCode.Success, "Команда запуска отправлена"); })) ReturnToList(); }
             else if (!Navigation.LaunchList && RunningList.SelectedItem is RunningProgram program)
-            { currentProgram = program; currentEntry = null; ShowActions(); }
+            {
+                currentProgram = program; currentEntry = null;
+                if (program.Windows.Count == 1) await MoveWindow(program.Windows[0]);
+                else ShowPanel(ProgramPanel.Windows, "Какое окно переместить?", program.Name, program.Windows);
+            }
             return;
         }
         if (Navigation.Panel == ProgramPanel.Windows && ProgramActions.SelectedItem is WindowTarget target)
@@ -275,6 +279,15 @@ public partial class ProgramsView : UserControl
     {
         Navigation.Panel = panel; PanelTitle.Text = title; PanelDescription.Text = description;
         bool confirmation = panel is ProgramPanel.ConfirmTermination or ProgramPanel.ConfirmDelete or ProgramPanel.ConfirmReset;
+        PanelSurface.Background = confirmation ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(185, 8, 10, 13)) : System.Windows.Media.Brushes.Transparent;
+        PanelContainer.Width = confirmation ? 680 : double.NaN;
+        PanelContainer.MaxHeight = confirmation ? 350 : double.PositiveInfinity;
+        PanelContainer.HorizontalAlignment = confirmation ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        PanelContainer.VerticalAlignment = confirmation ? VerticalAlignment.Center : VerticalAlignment.Stretch;
+        PanelContainer.Background = confirmation ? (System.Windows.Media.Brush)FindResource("DialogSurface") : System.Windows.Media.Brushes.Transparent;
+        PanelContainer.BorderBrush = confirmation ? (System.Windows.Media.Brush)FindResource("Line") : System.Windows.Media.Brushes.Transparent;
+        PanelContainer.BorderThickness = confirmation ? new Thickness(1) : new Thickness(0);
+        PanelContainer.Padding = confirmation ? new Thickness(24) : new Thickness(0);
         PanelDescription.Text = confirmation ? Navigation.LaunchList ? "Каталог запуска" : "Запущенные программы" : description;
         PanelWarning.Text = "";
         PanelWarning.Visibility = Visibility.Collapsed;
@@ -361,6 +374,36 @@ public partial class ProgramsView : UserControl
         if (sender is not ListBox list || ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is not ListBoxItem item) return;
         pressedItem = item;
         list.SelectedItem = item.DataContext; list.Focus(); e.Handled = true;
+    }
+    public async Task SecondaryAsync()
+    {
+        if (IsBusy || InPanel) return;
+        if (Navigation.LaunchList)
+        {
+            if (LaunchList.SelectedItem is CatalogRow row) { currentEntry = row.Entry; currentProgram = null; await EditEntry(row.Entry); }
+            return;
+        }
+        if (RunningList.SelectedItem is not RunningProgram program) return;
+        currentProgram = program; currentEntry = null;
+        bool normalClose = processes.UsesNormalClose(program.Identity);
+        ShowPanel(ProgramPanel.ConfirmTermination, normalClose ? "Закрыть окна Проводника?" : $"Завершить {program.Name}?", "Запущенные программы",
+            new[] { new Choice("cancel", "Отмена"), new Choice("kill", normalClose ? "Закрыть окна" : "Завершить принудительно") });
+    }
+    public async Task CreateAsync()
+    {
+        if (IsBusy || InPanel || !Navigation.LaunchList) return;
+        currentEntry = null; currentProgram = null;
+        await EditEntry(null);
+    }
+    public void DeleteEditing()
+    {
+        if (!Editing || currentEntry == null || Editor?.IsSaving == true) return;
+        editorOpen = false;
+        EditorHost.Visibility = Visibility.Collapsed;
+        EditorHost.Content = null;
+        Editor = null;
+        ShowPanel(ProgramPanel.ConfirmDelete, $"Удалить запись «{currentEntry.Name}»?", "Приложение и файл останутся на компьютере.",
+            new[] { new Choice("cancel", "Отмена"), new Choice("delete-entry", "Удалить запись") });
     }
     private async void ListClick(object sender, MouseButtonEventArgs e)
     {
