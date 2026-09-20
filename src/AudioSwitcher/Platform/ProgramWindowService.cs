@@ -69,10 +69,18 @@ public sealed class ProgramWindowService
         try
         {
             var metadata = FileVersionInfo.GetVersionInfo(image);
-            if (!string.IsNullOrWhiteSpace(metadata.FileDescription)) return metadata.FileDescription.Trim();
-            if (!string.IsNullOrWhiteSpace(metadata.ProductName)) return metadata.ProductName.Trim();
+            if (!string.IsNullOrWhiteSpace(metadata.FileDescription)) return CleanApplicationName(metadata.FileDescription);
+            if (!string.IsNullOrWhiteSpace(metadata.ProductName)) return CleanApplicationName(metadata.ProductName);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception or ArgumentException) { /* Metadata is optional. */ }
         return Path.GetFileNameWithoutExtension(image);
+    }
+
+    private static string CleanApplicationName(string name)
+    {
+        string trimmed = name.Trim();
+        return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? Path.GetFileNameWithoutExtension(trimmed)
+            : trimmed;
     }
 }

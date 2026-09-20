@@ -26,10 +26,15 @@ internal static class FixedDesignChecks
             app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             app.InitializeComponent();
             window = new MainWindow(new ApplicationSettingsStore(Path.Combine(root, "settings.json")));
+            window.Show();
             var appRoot = (FrameworkElement)window.FindName("AppRoot");
-            appRoot.Measure(new Size(2400, 1350));
-            appRoot.Arrange(new Rect(0, 0, 2400, 1350));
-            appRoot.UpdateLayout();
+            window.UpdateLayout();
+            Require(!VisualAncestors(appRoot).OfType<Viewbox>().Any(), "Interactive root is still scaled by a Viewbox");
+            Require(Math.Abs(appRoot.ActualWidth - window.ActualWidth) < 1 && Math.Abs(appRoot.ActualHeight - window.ActualHeight) < 1,
+                $"Interactive root {appRoot.ActualWidth:0.##}x{appRoot.ActualHeight:0.##} does not fill window {window.ActualWidth:0.##}x{window.ActualHeight:0.##}");
+            var focusOutline = ((SolidColorBrush)app.FindResource("FocusOutline")).Color;
+            var focusThickness = (Thickness)app.FindResource("FocusBorderThickness");
+            var focusCorner = (CornerRadius)app.FindResource("FocusCornerRadius");
 
             var hints = (FrameworkElement)window.FindName("ControllerHints");
             Require(hints.Visibility == Visibility.Visible, "Gamepad hints are hidden");
@@ -37,12 +42,54 @@ internal static class FixedDesignChecks
             Require(Grid.GetColumn(status) == 0 && status.HorizontalAlignment == HorizontalAlignment.Left, "Status is not aligned in the lower-left column");
 
             var controlTab = (Button)window.FindName("ControlTab");
+            controlTab.GetType().GetProperty("IsSelected")!.SetValue(controlTab, true);
+            controlTab.ApplyTemplate();
+            var sectionMarker = controlTab.Template.FindName("SectionMarker", controlTab) as FrameworkElement;
+            Require(sectionMarker?.Visibility == Visibility.Visible, "Selected section marker is missing");
+
+            var footer = window.FindName("FooterSurface") as FrameworkElement;
+            var overlay = window.FindName("OverlayShade") as FrameworkElement;
+            Require(footer != null && overlay != null && Panel.GetZIndex(footer) > Panel.GetZIndex(overlay), "Footer is not above overlays");
+
+            var settingsToggle = (ToggleButton)window.FindName("SettingsToggle");
+            settingsToggle.ApplyTemplate();
+            var toggleState = settingsToggle.Template.FindName("ToggleState", settingsToggle) as TextBlock;
+            Require(toggleState?.Text == "Выкл.", "Toggle has no explicit off label");
+            settingsToggle.IsChecked = true;
+            Require(toggleState!.Text == "Вкл.", "Toggle has no explicit on label");
+            Require((double)app.FindResource("BadgeSize") >= 21, "Gamepad badges are too small for TV viewing");
+            Require(window.Width <= 1500, $"Window remains too wide at {window.Width}");
+
+            var cleanApplicationName = typeof(ProgramWindowService).GetMethod("CleanApplicationName", BindingFlags.Static | BindingFlags.NonPublic);
+            Require(cleanApplicationName?.Invoke(null, ["mspaint.exe"]) as string == "mspaint", "Technical executable suffix is visible");
+
+            var programsView = (ProgramsView)window.FindName("Programs");
+            var launchList = (ListBox)programsView.FindName("LaunchList");
+            Require(Grid.GetRow(launchList) == 1, "Launch catalogue can overlap its heading");
+
+            var primaryCommand = (Button)window.FindName("PrimaryCommand");
+            primaryCommand.ApplyTemplate();
+            primaryCommand.Focus();
+            window.UpdateLayout();
+            var commandFrame = (Border)primaryCommand.Template.FindName("Surface", primaryCommand);
+            RequireFocusFrame(commandFrame, focusOutline, focusThickness, focusCorner, "Command");
+
+            controlTab.Focus();
+            window.UpdateLayout();
+            var sectionFrame = (Border)controlTab.Template.FindName("SelectionFrame", controlTab);
+            RequireFocusFrame(sectionFrame, focusOutline, focusThickness, focusCorner, "Section");
+            RequirePixelAlignedVerticalEdges(sectionFrame, window, "Section");
             RaiseRightClick(window, controlTab);
-            var programs = (ProgramsView)window.FindName("Programs");
+            var programs = programsView;
             Require(programs.Navigation.SectionActive, "Right click did not activate the selected element");
+            var audio = (Button)window.FindName("AudioControlCard");
+            audio.ApplyTemplate();
+            window.UpdateLayout();
+            var controlFrame = (Border)audio.Template.FindName("FocusFrame", audio);
+            RequireFocusFrame(controlFrame, focusOutline, focusThickness, focusCorner, "Content");
+            RequirePixelAlignedVerticalEdges(controlFrame, window, "Content");
             Call(window, "Execute", PadAction.Close);
 
-            var audio = (Button)window.FindName("AudioControlCard");
             var display = (Button)window.FindName("DisplayControlCard");
             var divider = window.FindName("ControlRowDivider") as Border ?? throw new Exception("Shared row divider missing");
             var audioCenter = audio.TranslatePoint(new Point(0, audio.ActualHeight / 2), appRoot).Y;
@@ -58,18 +105,86 @@ internal static class FixedDesignChecks
             Require(!programs.Navigation.SectionActive, "Selecting Running entered its contents");
             Call(window, "Execute", PadAction.Confirm);
             Require(programs.Navigation.SectionActive, "Confirm did not enter the selected section");
-            Call(window, "Execute", PadAction.Close);
+
+            Color focusedRowColor;
+            CornerRadius focusedRowCorner;
+            programs.Leave();
+            using (var process = Process.GetCurrentProcess())
+            {
+                var running = (ListBox)programs.FindName("RunningList");
+                var identity = new ProcessIdentity(process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc());
+                var first = new RunningProgram(identity, "Первый", [new WindowTarget(identity, (nint)101, "Первый", "Экран 1", false)]);
+                var second = new RunningProgram(identity, "Второй", [new WindowTarget(identity, (nint)102, "Второй", "Экран 1", false)]);
+                running.ItemsSource = new[] { first, second };
+                running.SelectedIndex = 0;
+                running.UpdateLayout();
+                programs.RestoreFocus();
+                programs.Move(1);
+                window.UpdateLayout();
+                var selectedRow = (ListBoxItem)running.ItemContainerGenerator.ContainerFromIndex(1);
+                Require(selectedRow.IsKeyboardFocused, "Moving in a section leaves focus on the list instead of the selected row");
+                var rowFrame = VisualChild<Border>(selectedRow) ?? throw new Exception("Selected row frame missing");
+                RequireFocusFrame(rowFrame, focusOutline, focusThickness, focusCorner, "List row");
+                RequirePixelAlignedVerticalEdges(rowFrame, window, "List row");
+                focusedRowColor = (rowFrame.BorderBrush as SolidColorBrush)?.Color ?? throw new Exception("Selected row outline missing");
+                focusedRowCorner = rowFrame.CornerRadius;
+
+                Call(window, "Execute", PadAction.Close);
+                window.UpdateLayout();
+                Require(rowFrame.Background is SolidColorBrush inactiveBackground && inactiveBackground.Color.A == 0,
+                    "Selected row remains highlighted after returning to section navigation");
+            }
             Require(!programs.Navigation.SectionActive, "Close did not return to section selection");
             Call(window, "SwitchSection", AppSection.Control);
+            Call(window, "Execute", PadAction.Confirm);
+            window.UpdateLayout();
+            var audioFrame = VisualChild<Border>(audio) ?? throw new Exception("Control card frame missing");
+            Require(audioFrame.BorderBrush is SolidColorBrush audioBrush && focusedRowColor == audioBrush.Color,
+                "Focused rows and control cards use different outline colors");
+            Require(focusedRowCorner == audioFrame.CornerRadius,
+                "Focused rows and control cards use different corner radii");
+            Require(audioFrame.BorderThickness == focusThickness,
+                $"Focused control thickness {audioFrame.BorderThickness} differs from token {focusThickness}");
+
+            Require(!VisualText((DependencyObject)window.FindName("ControlSurface")).Any(text => text is "Активно" or "Главный"),
+                "Control cards still show redundant state labels");
+
+            Call(window, "Execute", PadAction.Settings);
+            window.UpdateLayout();
+            Require(settingsToggle.IsKeyboardFocused, "Settings focus did not reach its toggle row");
+            var settingsFrame = (Border)settingsToggle.Template.FindName("Row", settingsToggle);
+            RequireFocusFrame(settingsFrame, focusOutline, focusThickness, focusCorner, "Settings");
+            RequirePixelAlignedVerticalEdges(settingsFrame, window, "Settings");
+            Call(window, "Execute", PadAction.Close);
+            window.UpdateLayout();
 
             ((FrameworkElement)window.FindName("OverlayShade")).Visibility = Visibility.Visible;
             var picker = (Border)window.FindName("DevicePickerOverlay");
             picker.Visibility = Visibility.Visible;
-            appRoot.Measure(new Size(2400, 1350));
-            appRoot.Arrange(new Rect(0, 0, 2400, 1350));
-            appRoot.UpdateLayout();
-            Require(picker.ActualWidth is >= 700 and <= 740, $"Picker width is {picker.ActualWidth}");
+            var devices = (ListBox)window.FindName("Devices");
+            devices.ItemsSource = new[]
+            {
+                new DeviceOption("first", "Первое устройство", "Тест", true),
+                new DeviceOption("second", "Второе устройство", "Тест", false)
+            };
+            devices.SelectedIndex = 0;
+            window.UpdateLayout();
+            Call(window, "FocusSelection", devices);
+            window.UpdateLayout();
+            var initialDeviceRow = (ListBoxItem)devices.ItemContainerGenerator.ContainerFromIndex(0);
+            Require(initialDeviceRow.IsKeyboardFocused, "Device picker does not focus its initial selection");
+            Call(window, "MoveOverlay", 1);
+            window.UpdateLayout();
+            var selectedDeviceRow = (ListBoxItem)devices.ItemContainerGenerator.ContainerFromIndex(1);
+            Require(devices.SelectedIndex == 1 && selectedDeviceRow.IsKeyboardFocused,
+                "Device picker changes selection but leaves keyboard focus on the list");
+            var deviceFrame = VisualChild<Border>(selectedDeviceRow) ?? throw new Exception("Selected device frame missing");
+            RequireFocusFrame(deviceFrame, focusOutline, focusThickness, focusCorner, "Device");
+            Require(picker.ActualWidth is >= 440 and <= 460, $"Picker width is {picker.ActualWidth}");
             Capture(window, "tv-targeted-picker.png");
+            Console.WriteLine("PASS Focus indicators use shared brush and geometry");
+            Console.WriteLine("PASS Device picker focuses its initial and moved selection");
+            Console.WriteLine("Passed: 2, Failed: 0");
             return 0;
         }
         catch (Exception error)
@@ -83,6 +198,21 @@ internal static class FixedDesignChecks
             app?.Shutdown();
             try { Directory.Delete(root, true); } catch { }
         }
+    }
+
+    private static IEnumerable<DependencyObject> VisualAncestors(DependencyObject child)
+    {
+        for (var current = VisualTreeHelper.GetParent(child); current != null; current = VisualTreeHelper.GetParent(current))
+            yield return current;
+    }
+
+    private static void RequirePixelAlignedVerticalEdges(FrameworkElement frame, Window window, string name)
+    {
+        var bounds = frame.TransformToAncestor(window).TransformBounds(new Rect(frame.RenderSize));
+        var scale = VisualTreeHelper.GetDpi(window).DpiScaleX;
+        static bool IsPixelAligned(double value) => Math.Abs(value - Math.Round(value)) < 0.02;
+        Require(IsPixelAligned(bounds.Left * scale) && IsPixelAligned(bounds.Right * scale),
+            $"{name} vertical edges fall between device pixels: {bounds.Left * scale:0.###}, {bounds.Right * scale:0.###}");
     }
 
     private static void RaiseRightClick(Window window, UIElement element)
@@ -206,7 +336,7 @@ internal static class FixedDesignChecks
                         Check("Focused rows keep a pixel-aligned constant border", () =>
                         {
                             Require(window.UseLayoutRounding && window.SnapsToDevicePixels, "Window is not aligned to device pixels");
-                            Require(rowBorder.BorderThickness == restingBorder && restingBorder == new Thickness(2), $"Focus border changes from {restingBorder} to {rowBorder.BorderThickness}");
+                            Require(rowBorder.BorderThickness == restingBorder && restingBorder == new Thickness(3), $"Focus border changes from {restingBorder} to {rowBorder.BorderThickness}");
                         });
                         await programs.ConfirmAsync(); window.UpdateLayout();
                         Check("A opens a window picker directly when an app has several windows", () => Require(programs.Navigation.Panel == ProgramPanel.Windows, "Intermediate actions menu opened"));
@@ -325,6 +455,15 @@ internal static class FixedDesignChecks
         }
     }
     private static object? Call(object instance, string name, params object?[] args) => instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(instance, args);
+    private static void RequireFocusFrame(Border frame, Color outline, Thickness thickness, CornerRadius corner, string name)
+    {
+        Require(frame.BorderBrush is SolidColorBrush brush && brush.Color == outline,
+            $"{name} focus does not use FocusOutline: {frame.BorderBrush}");
+        Require(frame.BorderThickness == thickness,
+            $"{name} focus thickness {frame.BorderThickness} differs from token {thickness}");
+        Require(frame.CornerRadius == corner,
+            $"{name} focus corner {frame.CornerRadius} differs from token {corner}");
+    }
     private static void Capture(Window window, string name)
     {
         var frame = (FrameworkElement)window.FindName("AppRoot");

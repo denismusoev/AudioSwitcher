@@ -63,10 +63,15 @@ public partial class MainWindow : Window
 
     private void FitToWorkArea()
     {
-        Width = 1200;
-        Height = 675;
+        var handle = new WindowInteropHelper(this).Handle;
+        var area = WindowPlacement.PrimaryWorkArea();
+        var scale = WindowPlacement.Scale(handle);
+        double availableWidth = area.Width / scale * 0.88;
+        double availableHeight = area.Height / scale * 0.88;
+        Width = Math.Floor(Math.Min(1500, Math.Min(availableWidth, availableHeight * 16 / 9)));
+        Height = Math.Floor(Width * 9 / 16);
         WindowState = WindowState.Normal;
-        WindowPlacement.Center(new WindowInteropHelper(this).Handle);
+        WindowPlacement.Center(handle);
     }
 
     private void SetStatus(string text, string? details = null)
@@ -88,8 +93,12 @@ public partial class MainWindow : Window
         {
             var audioItems = audio.GetDevices();
             var displayItems = display.GetDevices();
-            AudioSummary.Text = audioItems.FirstOrDefault(x => x.IsDefault)?.DisplayName ?? audioItems.FirstOrDefault()?.DisplayName ?? "Нет доступных устройств";
-            DisplaySummary.Text = displayItems.FirstOrDefault(x => x.IsDefault)?.DisplayName ?? displayItems.FirstOrDefault()?.DisplayName ?? "Нет доступных экранов";
+            var activeAudio = audioItems.FirstOrDefault(x => x.IsDefault) ?? audioItems.FirstOrDefault();
+            var activeDisplay = displayItems.FirstOrDefault(x => x.IsDefault) ?? displayItems.FirstOrDefault();
+            AudioSummary.Text = activeAudio?.DisplayName ?? "Нет доступных устройств";
+            DisplaySummary.Text = activeDisplay?.DisplayName ?? "Нет доступных экранов";
+            AutomationProperties.SetName(AudioControlCard, $"Устройство звука: {AudioSummary.Text}");
+            AutomationProperties.SetName(DisplayControlCard, $"Основной экран: {DisplaySummary.Text}");
             if (!quiet) SetStatus("Готово");
         }
         catch (Exception ex) { SetStatus("Не удалось обновить устройства", ex.Message); }
@@ -161,8 +170,9 @@ public partial class MainWindow : Window
             (LaunchTab, navigation.Section == AppSection.Launch)
         })
         {
-            tab.IsSelected = selected;
-            tab.SetResourceReference(Control.ForegroundProperty, selected ? "Text" : "MutedText");
+            bool showSelection = overlay != OverlayMode.Settings && selected;
+            tab.IsSelected = showSelection;
+            tab.SetResourceReference(Control.ForegroundProperty, showSelection ? "Text" : "MutedText");
         }
 
         ControlTab.IsEnabled = RunningTab.IsEnabled = LaunchTab.IsEnabled = true;
@@ -190,8 +200,7 @@ public partial class MainWindow : Window
             PickerTitle.Text = displays ? "Основной экран" : "Устройство звука";
             PickerSubtitle.Text = displays ? "Выберите экран, который станет главным" : "Выберите устройство вывода по умолчанию";
             ShowOverlay(OverlayMode.Devices);
-            Devices.Focus();
-            if (Devices.SelectedItem != null) Devices.ScrollIntoView(Devices.SelectedItem);
+            FocusSelection(Devices);
         }
         catch (Exception ex) { ShowError("Не удалось загрузить устройства", ex.Message); }
     }
@@ -200,6 +209,7 @@ public partial class MainWindow : Window
     {
         SettingsChoices.SelectedIndex = Programs.MoveBehavior == WindowMoveBehavior.KeepUtilityFocused ? 0 : 1;
         SettingsToggle.IsChecked = SettingsChoices.SelectedIndex == 1;
+        UpdateSettingsAutomationName();
         ShowOverlay(OverlayMode.Settings);
         SettingsToggle.Focus();
     }
@@ -380,8 +390,18 @@ public partial class MainWindow : Window
         var list = Devices;
         if (list.Items.Count == 0) return;
         list.SelectedIndex = Math.Clamp(list.SelectedIndex + direction, 0, list.Items.Count - 1);
-        list.Focus();
-        list.ScrollIntoView(list.SelectedItem);
+        FocusSelection(list);
+    }
+
+    private void FocusSelection(ListBox list)
+    {
+        list.UpdateLayout();
+        if (list.SelectedItem != null) list.ScrollIntoView(list.SelectedItem);
+        list.UpdateLayout();
+        if (list.SelectedItem != null && list.ItemContainerGenerator.ContainerFromItem(list.SelectedItem) is ListBoxItem item)
+            item.Focus();
+        else
+            list.Focus();
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e)
@@ -441,8 +461,13 @@ public partial class MainWindow : Window
     private void SettingsToggleClick(object sender, RoutedEventArgs e)
     {
         SettingsChoices.SelectedIndex = SettingsToggle.IsChecked == true ? 1 : 0;
+        UpdateSettingsAutomationName();
         ApplySetting();
     }
+
+    private void UpdateSettingsAutomationName() => AutomationProperties.SetName(
+        SettingsToggle,
+        $"Переключаться на приложение: {(SettingsToggle.IsChecked == true ? "включено" : "выключено")}");
     private void RightPointerDown(object sender, MouseButtonEventArgs e) => e.Handled = true;
     private async void RightPointerUp(object sender, MouseButtonEventArgs e)
     {

@@ -178,7 +178,8 @@ public partial class ProgramsView : UserControl
         }
         var list = InPanel ? ProgramActions : Navigation.LaunchList ? LaunchList : RunningList;
         if (list.Items.Count == 0) return;
-        list.SelectedIndex = Math.Clamp(list.SelectedIndex + direction, 0, list.Items.Count - 1); list.Focus(); ScrollSelection(list);
+        list.SelectedIndex = Math.Clamp(list.SelectedIndex + direction, 0, list.Items.Count - 1);
+        FocusSelection(list);
     }
     public void MoveHorizontal(int direction)
     {

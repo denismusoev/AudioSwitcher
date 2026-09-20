@@ -17,7 +17,7 @@ internal sealed class InterfaceSettings : IDisposable
     public InterfaceSettings(Application app, Action changed)
     {
         this.app = app; this.changed = changed;
-        foreach (string key in new[] { "WindowSurface", "Text", "SelectedText", "MutedText", "Line", "Accent", "SelectedSurface", "HoverSurface", "DialogSurface", "InputSurface", "ErrorText" })
+        foreach (string key in new[] { "WindowSurface", "Text", "SelectedText", "MutedText", "Line", "Accent", "FocusOutline", "SelectedSurface", "HoverSurface", "DialogSurface", "InputSurface", "ErrorText" })
             original[key] = app.Resources[key];
         SystemParameters.StaticPropertyChanged += OnSystemChanged;
         SystemEvents.UserPreferenceChanged += OnPreferenceChanged;
@@ -34,13 +34,13 @@ internal sealed class InterfaceSettings : IDisposable
             TextScale = Math.Clamp(Convert.ToDouble(key?.GetValue("TextScaleFactor", 100)) / 100, 1, 2.25);
         }
         catch (System.Security.SecurityException) { TextScale = 1; }
-        foreach (int size in Sizes) app.Resources[$"Font{size}"] = size * TextScale;
-        app.Resources["BadgeSize"] = 18 * TextScale;
+        foreach (int size in Sizes) app.Resources[$"Font{size}"] = size * 0.625 * TextScale;
+        app.Resources["BadgeSize"] = 34 * 0.625 * TextScale;
         foreach (var pair in original) app.Resources[pair.Key] = pair.Value;
         if (SystemParameters.HighContrast)
         {
             foreach (string key in new[] { "WindowSurface", "DialogSurface", "InputSurface" }) app.Resources[key] = SystemColors.WindowBrush;
-            foreach (string key in new[] { "Text", "MutedText", "Line", "Accent", "ErrorText" }) app.Resources[key] = SystemColors.WindowTextBrush;
+            foreach (string key in new[] { "Text", "MutedText", "Line", "Accent", "FocusOutline", "ErrorText" }) app.Resources[key] = SystemColors.WindowTextBrush;
             app.Resources["SelectedSurface"] = SystemColors.HighlightBrush;
             app.Resources["SelectedText"] = SystemColors.HighlightTextBrush;
             app.Resources["HoverSurface"] = SystemColors.WindowBrush;
