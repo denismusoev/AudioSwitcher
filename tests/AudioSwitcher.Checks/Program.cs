@@ -1,4 +1,5 @@
 using AudioSwitcher.Core;
+using AudioSwitcher.Platform;
 
 int passed = 0, failed = 0;
 void Check(string name, Action test) { try { test(); Console.WriteLine($"PASS {name}"); passed++; } catch (Exception e) { Console.WriteLine($"FAIL {name}: {e.Message}"); failed++; } }
@@ -70,14 +71,27 @@ Check("Program panels cancel before closing the application", () => {
     Equal(false, navigation.ChangeSection(-1)); Equal(AppSection.Running, navigation.Section);
     Equal(true, navigation.Back()); Equal(ProgramPanel.List, navigation.Panel);
 });
-Check("Three TV sections wrap with shoulder navigation", () => {
+Check("Up and down wrap through the three main sections", () => {
     var navigation = new NavigationState();
+    Equal(NavigationTransition.SectionChanged, navigation.Navigate(PadAction.Down)); Equal(AppSection.Running, navigation.Section);
+    Equal(NavigationTransition.SectionChanged, navigation.Navigate(PadAction.Down)); Equal(AppSection.Launch, navigation.Section);
+    Equal(NavigationTransition.SectionChanged, navigation.Navigate(PadAction.Down)); Equal(AppSection.Control, navigation.Section);
+    Equal(NavigationTransition.SectionChanged, navigation.Navigate(PadAction.Up)); Equal(AppSection.Launch, navigation.Section);
+    navigation.Panel = ProgramPanel.Actions; Equal(NavigationTransition.None, navigation.Navigate(PadAction.Up));
+});
+Check("Right or confirm enters a section and left or close returns", () => {
+    var navigation = new NavigationState();
+    Equal(NavigationTransition.EnteredSection, navigation.Navigate(PadAction.Confirm));
+    Equal(NavigationTransition.None, navigation.Navigate(PadAction.Down));
     Equal(AppSection.Control, navigation.Section);
-    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Running, navigation.Section);
-    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Launch, navigation.Section);
-    Equal(true, navigation.ChangeSection(1)); Equal(AppSection.Control, navigation.Section);
-    Equal(true, navigation.ChangeSection(-1)); Equal(AppSection.Launch, navigation.Section);
-    navigation.Panel = ProgramPanel.Actions; Equal(false, navigation.ChangeSection(-1));
+    Equal(NavigationTransition.LeftSection, navigation.Navigate(PadAction.Close));
+    Equal(NavigationTransition.None, navigation.Navigate(PadAction.Left));
+    Equal(NavigationTransition.EnteredSection, navigation.Navigate(PadAction.Right));
+    Equal(NavigationTransition.LeftSection, navigation.Navigate(PadAction.Left));
+});
+Check("Shoulder buttons have no navigation action", () => {
+    Equal(PadAction.None, Gamepad.Map(new Gamepad.State { Buttons = 0x0100 }));
+    Equal(PadAction.None, Gamepad.Map(new Gamepad.State { Buttons = 0x0200 }));
 });
 Check("Confirmation is rearmed only after all gamepad controls are released", () => {
     var gate = new InputGate();

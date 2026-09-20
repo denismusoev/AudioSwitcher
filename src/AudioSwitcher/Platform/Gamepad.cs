@@ -12,20 +12,20 @@ public static class Gamepad
         for (uint i = 0; i < 4; i++)
         {
             if (GetState(i, out var s) != 0) continue;
-            action = (s.Buttons & 0x2000) != 0 ? PadAction.Close
-                : (s.Buttons & 0x1000) != 0 ? PadAction.Confirm
-                : (s.Buttons & 0x4000) != 0 ? PadAction.Secondary
-                : (s.Buttons & 0x8000) != 0 ? PadAction.CreateOrEdit
-                : (s.Buttons & 0x0010) != 0 ? PadAction.Settings
-                : (s.Buttons & 0x0020) != 0 ? PadAction.Details
-                : (s.Buttons & 0x0100) != 0 ? PadAction.PreviousSection
-                : (s.Buttons & 0x0200) != 0 ? PadAction.NextSection
-                : (s.Buttons & 0x0004) != 0 || s.LeftX < -16000 ? PadAction.Left
-                : (s.Buttons & 0x0008) != 0 || s.LeftX > 16000 ? PadAction.Right
-                : (s.Buttons & 1) != 0 || s.LeftY > 16000 ? PadAction.Up
-                : (s.Buttons & 2) != 0 || s.LeftY < -16000 ? PadAction.Down : PadAction.None;
+            action = Map(s);
             return true;
         }
         return false;
     }
+
+    public static PadAction Map(State state) => (state.Buttons & 0x2000) != 0 ? PadAction.Close
+        : (state.Buttons & 0x1000) != 0 ? PadAction.Confirm
+        : (state.Buttons & 0x4000) != 0 ? PadAction.Secondary
+        : (state.Buttons & 0x8000) != 0 ? PadAction.CreateOrEdit
+        : (state.Buttons & 0x0010) != 0 ? PadAction.Settings
+        : (state.Buttons & 0x0020) != 0 ? PadAction.Details
+        : (state.Buttons & 0x0004) != 0 || state.LeftX < -16000 ? PadAction.Left
+        : (state.Buttons & 0x0008) != 0 || state.LeftX > 16000 ? PadAction.Right
+        : (state.Buttons & 1) != 0 || state.LeftY > 16000 ? PadAction.Up
+        : (state.Buttons & 2) != 0 || state.LeftY < -16000 ? PadAction.Down : PadAction.None;
 }

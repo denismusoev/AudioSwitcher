@@ -31,6 +31,17 @@ internal static class FixedDesignChecks
             appRoot.Arrange(new Rect(0, 0, 2400, 1350));
             appRoot.UpdateLayout();
 
+            var hints = (FrameworkElement)window.FindName("ControllerHints");
+            Require(hints.Visibility == Visibility.Visible, "Gamepad hints are hidden");
+            var status = (TextBlock)window.FindName("Status");
+            Require(Grid.GetColumn(status) == 0 && status.HorizontalAlignment == HorizontalAlignment.Left, "Status is not aligned in the lower-left column");
+
+            var controlTab = (Button)window.FindName("ControlTab");
+            RaiseRightClick(window, controlTab);
+            var programs = (ProgramsView)window.FindName("Programs");
+            Require(programs.Navigation.SectionActive, "Right click did not activate the selected element");
+            Call(window, "Execute", PadAction.Close);
+
             var audio = (Button)window.FindName("AudioControlCard");
             var display = (Button)window.FindName("DisplayControlCard");
             var divider = window.FindName("ControlRowDivider") as Border ?? throw new Exception("Shared row divider missing");
@@ -42,9 +53,20 @@ internal static class FixedDesignChecks
             Require(VisualBorders((DependencyObject)window.FindName("ControlSurface")).Count(border => border.ActualHeight is > 0 and <= 1.5 && border.Background is SolidColorBrush brush && brush.Color == lineColor) == 1, "Control surface must contain exactly one separator");
             Capture(window, "tv-targeted-control.png");
 
+            Call(window, "SwitchSection", AppSection.Running);
+            Require(((TextBlock)window.FindName("Status")).Text == "Загрузка приложений…", "Selecting Running did not start loading its contents");
+            Require(!programs.Navigation.SectionActive, "Selecting Running entered its contents");
+            Call(window, "Execute", PadAction.Confirm);
+            Require(programs.Navigation.SectionActive, "Confirm did not enter the selected section");
+            Call(window, "Execute", PadAction.Close);
+            Require(!programs.Navigation.SectionActive, "Close did not return to section selection");
+            Call(window, "SwitchSection", AppSection.Control);
+
             ((FrameworkElement)window.FindName("OverlayShade")).Visibility = Visibility.Visible;
             var picker = (Border)window.FindName("DevicePickerOverlay");
             picker.Visibility = Visibility.Visible;
+            appRoot.Measure(new Size(2400, 1350));
+            appRoot.Arrange(new Rect(0, 0, 2400, 1350));
             appRoot.UpdateLayout();
             Require(picker.ActualWidth is >= 700 and <= 740, $"Picker width is {picker.ActualWidth}");
             Capture(window, "tv-targeted-picker.png");
@@ -61,6 +83,22 @@ internal static class FixedDesignChecks
             app?.Shutdown();
             try { Directory.Delete(root, true); } catch { }
         }
+    }
+
+    private static void RaiseRightClick(Window window, UIElement element)
+    {
+        var down = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Right)
+        {
+            RoutedEvent = UIElement.PreviewMouseRightButtonDownEvent,
+            Source = element
+        };
+        Call(window, "RightPointerDown", window, down);
+        var up = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Right)
+        {
+            RoutedEvent = UIElement.PreviewMouseRightButtonUpEvent,
+            Source = element
+        };
+        Call(window, "RightPointerUp", window, up);
     }
 
     public static int Run()

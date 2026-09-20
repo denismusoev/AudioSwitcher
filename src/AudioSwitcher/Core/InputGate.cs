@@ -1,7 +1,7 @@
 namespace AudioSwitcher.Core;
 public enum PadAction
 {
-    None, Up, Down, Left, Right, Confirm, Close, PreviousSection, NextSection,
+    None, Up, Down, Left, Right, Confirm, Close,
     Secondary, CreateOrEdit, Settings, Details,
     ToggleList = Secondary
 }

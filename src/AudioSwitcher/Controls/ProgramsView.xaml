@@ -10,7 +10,7 @@
  </UserControl.Resources>
  <Grid x:Name="ViewRoot">
   <Grid x:Name="ListsSurface">
-    <StackPanel Height="110" VerticalAlignment="Top"><TextBlock x:Name="ListTitle" FontSize="42" FontWeight="Normal"/><TextBlock x:Name="ListSubtitle" Margin="0,10,0,0" FontSize="{DynamicResource Font28}" Foreground="{DynamicResource MutedText}"/></StackPanel>
+    <StackPanel Height="110" VerticalAlignment="Top"><TextBlock x:Name="ListTitle" FontSize="42" FontWeight="350"/><TextBlock x:Name="ListSubtitle" Margin="0,10,0,0" FontSize="{DynamicResource Font28}" Foreground="{DynamicResource MutedText}"/></StackPanel>
     <ListBox x:Name="RunningList" Margin="0,110,0,0" Style="{StaticResource ProgramList}" ItemTemplate="{StaticResource RunningRow}" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Запущенные пользовательские приложения"/>
     <ListBox x:Name="LaunchList" Margin="0,110,0,0" Style="{StaticResource ProgramList}" Visibility="Collapsed" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Добавленные программы для запуска"/>
     <TextBlock x:Name="EmptyPrograms" Margin="28,144,28,32" FontSize="{DynamicResource Font28}" TextWrapping="Wrap" Foreground="{DynamicResource MutedText}" IsHitTestVisible="False"/>

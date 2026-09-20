@@ -30,7 +30,7 @@
         <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="3" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
         <ControlTemplate.Triggers>
           <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.5"/></Trigger>
-          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
           <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SelectedSurface}"/><Setter TargetName="Surface" Property="Opacity" Value="0.82"/></Trigger>
           <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Text}"/></Trigger>
         </ControlTemplate.Triggers>
@@ -47,7 +47,7 @@
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Foreground" Value="{DynamicResource MutedText}"/><Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderBrush" Value="Transparent"/>
-      <Setter Property="Padding" Value="0"/><Setter Property="FontSize" Value="{DynamicResource Font38}"/><Setter Property="FontWeight" Value="Normal"/><Setter Property="MinHeight" Value="80"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Padding" Value="0"/><Setter Property="FontSize" Value="{DynamicResource Font38}"/><Setter Property="FontWeight" Value="350"/><Setter Property="MinHeight" Value="80"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="TabFocus" BorderBrush="Transparent" BorderThickness="1" CornerRadius="3" Padding="2"><Border x:Name="TabLine" BorderThickness="0" BorderBrush="Transparent" Background="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center"/></Border></Border>
         <ControlTemplate.Triggers>
@@ -61,11 +61,11 @@
       <Setter Property="Foreground" Value="{DynamicResource Text}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="28,16"/><Setter Property="MinHeight" Value="124"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="SnapsToDevicePixels" Value="True"/><Setter Property="UseLayoutRounding" Value="True"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
-        <Border x:Name="Row" Background="Transparent" BorderBrush="Transparent" BorderThickness="2" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><Grid><Border Height="1" Background="{DynamicResource Line}" VerticalAlignment="Bottom"/><ContentPresenter VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="0,0,0,1"/></Grid></Border>
+        <Grid SnapsToDevicePixels="True"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="1"/></Grid.RowDefinitions><Border x:Name="Row" Grid.Row="0" Background="Transparent" BorderBrush="Transparent" BorderThickness="2" SnapsToDevicePixels="True"/><ContentPresenter Grid.Row="0" Margin="{TemplateBinding Padding}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/><Border Grid.Row="1" Height="1" Margin="28,0" Background="{DynamicResource Line}"/></Grid>
         <ControlTemplate.Triggers>
-          <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedSurface}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
+          <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedSurface}"/><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
           <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Text}"/></Trigger>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource HoverSurface}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource HoverSurface}"/><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
           <MultiTrigger><MultiTrigger.Conditions><Condition Property="IsSelected" Value="True"/><Condition Property="IsMouseOver" Value="True"/></MultiTrigger.Conditions><Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedSurface}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></MultiTrigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>

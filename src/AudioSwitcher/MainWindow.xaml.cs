@@ -49,7 +49,7 @@ public partial class MainWindow : Window
             navigation.Section = AppSection.Control;
             RefreshControl();
             UpdateChrome();
-            AudioControlCard.Focus();
+            FocusSectionTab();
             Activate();
             padTimer.Start();
             refreshTimer.Start();
@@ -63,8 +63,8 @@ public partial class MainWindow : Window
 
     private void FitToWorkArea()
     {
-        Width = 1220;
-        Height = 760;
+        Width = 1200;
+        Height = 675;
         WindowState = WindowState.Normal;
         WindowPlacement.Center(new WindowInteropHelper(this).Handle);
     }
@@ -97,15 +97,59 @@ public partial class MainWindow : Window
 
     private void SwitchSection(AppSection section)
     {
-        if (busy || Programs.IsBusy || Programs.InPanel || overlay != OverlayMode.None || navigation.Section == section) return;
+        if (busy || Programs.IsBusy || Programs.InPanel || overlay != OverlayMode.None || navigation.SectionActive) return;
+        if (navigation.Section == section) { FocusSectionTab(); return; }
         Programs.Leave();
         navigation.Section = section;
         navigation.LaunchList = section == AppSection.Launch;
         SetPrimarySurfaceVisibility(true);
         gate.RequireRelease();
-        if (section == AppSection.Control) { RefreshControl(); AudioControlCard.Focus(); }
-        else { Programs.SelectMode(section == AppSection.Launch, force: true); Programs.Enter(); }
+        if (section == AppSection.Control) RefreshControl();
+        else
+        {
+            Programs.SelectMode(section == AppSection.Launch, force: true);
+            Programs.Enter(focus: false);
+        }
+        FocusSectionTab();
         UpdateChrome();
+    }
+
+    private void ApplySectionChange()
+    {
+        Programs.Leave();
+        SetPrimarySurfaceVisibility(true);
+        gate.RequireRelease();
+        if (navigation.Section == AppSection.Control) RefreshControl();
+        else
+        {
+            Programs.SelectMode(navigation.Section == AppSection.Launch, force: true);
+            Programs.Enter(focus: false);
+        }
+        FocusSectionTab();
+        UpdateChrome();
+    }
+
+    private void ActivateSection(PadAction action = PadAction.Right)
+    {
+        if (navigation.Navigate(action) != NavigationTransition.EnteredSection) return;
+        if (navigation.Section == AppSection.Control) AudioControlCard.Focus();
+        else Programs.Enter();
+        gate.RequireRelease();
+        UpdateChrome();
+    }
+
+    private bool LeaveSection(PadAction action = PadAction.Left)
+    {
+        if (navigation.Navigate(action) != NavigationTransition.LeftSection) return false;
+        FocusSectionTab();
+        gate.RequireRelease();
+        UpdateChrome();
+        return true;
+    }
+
+    private void FocusSectionTab()
+    {
+        (navigation.Section switch { AppSection.Running => RunningTab, AppSection.Launch => LaunchTab, _ => ControlTab }).Focus();
     }
 
     private void UpdateChrome()
@@ -204,7 +248,8 @@ public partial class MainWindow : Window
 
     private void RestoreFocus()
     {
-        if (navigation.Section == AppSection.Control) AudioControlCard.Focus();
+        if (!navigation.SectionActive) FocusSectionTab();
+        else if (navigation.Section == AppSection.Control) AudioControlCard.Focus();
         else Programs.RestoreFocus();
     }
 
@@ -272,7 +317,8 @@ public partial class MainWindow : Window
         if (action == PadAction.Close)
         {
             if (CloseDetails()) return;
-            if (navigation.Section != AppSection.Control && Programs.Back()) return;
+            if (navigation.SectionActive && navigation.Section != AppSection.Control && Programs.Back()) return;
+            if (LeaveSection(PadAction.Close)) return;
             Close();
             return;
         }
@@ -287,26 +333,40 @@ public partial class MainWindow : Window
         }
         switch (action)
         {
-            case PadAction.PreviousSection: SwitchSection((AppSection)(((int)navigation.Section + 2) % 3)); break;
-            case PadAction.NextSection: SwitchSection((AppSection)(((int)navigation.Section + 1) % 3)); break;
-            case PadAction.Up: if (navigation.Section == AppSection.Control) MoveControl(-1); else Programs.Move(-1); break;
-            case PadAction.Down: if (navigation.Section == AppSection.Control) MoveControl(1); else Programs.Move(1); break;
-            case PadAction.Left: if (Programs.Editing) Programs.MoveHorizontal(-1); break;
-            case PadAction.Right: if (Programs.Editing) Programs.MoveHorizontal(1); break;
+            case PadAction.Up:
+            case PadAction.Down:
+                if (!navigation.SectionActive)
+                {
+                    if (navigation.Navigate(action) == NavigationTransition.SectionChanged) ApplySectionChange();
+                }
+                else if (navigation.Section == AppSection.Control) MoveControl(action == PadAction.Up ? -1 : 1);
+                else Programs.Move(action == PadAction.Up ? -1 : 1);
+                break;
+            case PadAction.Left:
+                if (Programs.Editing) Programs.MoveHorizontal(-1);
+                else LeaveSection();
+                break;
+            case PadAction.Right:
+                if (Programs.Editing) Programs.MoveHorizontal(1);
+                else ActivateSection();
+                break;
             case PadAction.Confirm:
+                if (!navigation.SectionActive) { ActivateSection(PadAction.Confirm); break; }
                 if (navigation.Section == AppSection.Control) OpenDevicePicker(Keyboard.FocusedElement == DisplayControlCard);
                 else _ = Programs.ConfirmAsync();
                 break;
             case PadAction.Secondary:
+                if (!navigation.SectionActive) break;
                 if (Programs.Editing) Programs.DeleteEditing();
                 else if (navigation.Section != AppSection.Control) _ = Programs.SecondaryAsync();
                 break;
             case PadAction.CreateOrEdit:
+                if (!navigation.SectionActive) break;
                 if (Programs.Editing) _ = Programs.CatalogAsync();
                 else if (navigation.Section == AppSection.Launch) _ = Programs.CreateAsync();
                 else OpenDetails();
                 break;
-            case PadAction.Details: OpenDetails(Programs.InPanel ? Programs.DetailsText : null); break;
+            case PadAction.Details: if (navigation.SectionActive) OpenDetails(Programs.InPanel ? Programs.DetailsText : null); break;
         }
     }
 
@@ -332,13 +392,13 @@ public partial class MainWindow : Window
             Key.Escape => PadAction.Close,
             Key.Up => PadAction.Up,
             Key.Down => PadAction.Down,
+            Key.Left => PadAction.Left,
+            Key.Right => PadAction.Right,
             Key.Enter => PadAction.Confirm,
             Key.X => PadAction.Secondary,
             Key.Y => PadAction.CreateOrEdit,
             Key.F10 or Key.M => PadAction.Settings,
             Key.F1 => PadAction.Details,
-            Key.PageUp => PadAction.PreviousSection,
-            Key.PageDown => PadAction.NextSection,
             _ => PadAction.None
         };
         if (action == PadAction.None || (e.IsRepeat && action is PadAction.Confirm or PadAction.Secondary or PadAction.CreateOrEdit or PadAction.Settings)) return;
@@ -346,9 +406,21 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void ControlClick(object sender, RoutedEventArgs e) => SwitchSection(AppSection.Control);
-    private void RunningClick(object sender, RoutedEventArgs e) => SwitchSection(AppSection.Running);
-    private void LaunchClick(object sender, RoutedEventArgs e) => SwitchSection(AppSection.Launch);
+    private void SelectSectionByMouse(AppSection section)
+    {
+        if (busy || Programs.IsBusy || Programs.InPanel || overlay != OverlayMode.None) return;
+        if (navigation.SectionActive)
+        {
+            if (navigation.Section == section) { RestoreFocus(); return; }
+            if (!LeaveSection()) return;
+        }
+        SwitchSection(section);
+        ActivateSection();
+    }
+
+    private void ControlClick(object sender, RoutedEventArgs e) => SelectSectionByMouse(AppSection.Control);
+    private void RunningClick(object sender, RoutedEventArgs e) => SelectSectionByMouse(AppSection.Running);
+    private void LaunchClick(object sender, RoutedEventArgs e) => SelectSectionByMouse(AppSection.Launch);
     private void PrimaryCommandClick(object sender, RoutedEventArgs e) => Execute(PadAction.Confirm);
     private void SecondaryCommandClick(object sender, RoutedEventArgs e) => Execute(PadAction.Secondary);
     private void CreateCommandClick(object sender, RoutedEventArgs e) => Execute(PadAction.CreateOrEdit);
@@ -371,7 +443,35 @@ public partial class MainWindow : Window
         SettingsChoices.SelectedIndex = SettingsToggle.IsChecked == true ? 1 : 0;
         ApplySetting();
     }
-    private void IgnoreRightButton(object sender, MouseButtonEventArgs e) => e.Handled = true;
+    private void RightPointerDown(object sender, MouseButtonEventArgs e) => e.Handled = true;
+    private async void RightPointerUp(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        var source = e.OriginalSource as DependencyObject;
+        for (var node = source; node != null && node != this; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is ListBoxItem item && ItemsControl.ItemsControlFromItemContainer(item) is ListBox list)
+            {
+                list.SelectedItem = item.DataContext;
+                list.Focus();
+                if (ReferenceEquals(list, Devices)) await ApplySelected();
+                else if (ReferenceEquals(list, SettingsChoices)) ApplySetting();
+                else if (Programs.IsAncestorOf(list)) await Programs.ConfirmAsync();
+                return;
+            }
+            if (node is ToggleButton toggle)
+            {
+                toggle.IsChecked = toggle.IsChecked != true;
+                toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, toggle));
+                return;
+            }
+            if (node is ButtonBase button)
+            {
+                button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, button));
+                return;
+            }
+        }
+    }
     private void PointerDown(object sender, MouseButtonEventArgs e)
     {
         pointerStart = e.GetPosition(this); dragged = false; dragAllowed = true;

@@ -48,13 +48,16 @@ public partial class ProgramsView : UserControl
     {
         PanelSurface.Visibility = Visibility.Collapsed;
     }
-    public void Enter()
+    public void Enter(bool focus = true)
     {
-        Leave(); lifetime = new();
-        catalog = store.Load(); ShowCatalog(); UpdateLists();
-        (Navigation.LaunchList ? LaunchList : RunningList).Focus();
-        if (catalog.Error != null && Navigation.LaunchList) Notify("Каталог недоступен. Можно сохранить копию и сбросить", catalog.Error);
-        _ = RefreshAsync();
+        if (lifetime == null)
+        {
+            lifetime = new();
+            catalog = store.Load(); ShowCatalog(); UpdateLists();
+            if (catalog.Error != null && Navigation.LaunchList) Notify("Каталог недоступен. Можно сохранить копию и сбросить", catalog.Error);
+            _ = RefreshAsync();
+        }
+        if (focus) RestoreFocus();
     }
     public void Leave() { lifetime?.Cancel(); lifetime?.Dispose(); lifetime = null; }
     public async Task RefreshAsync(bool quiet = false)
@@ -132,7 +135,8 @@ public partial class ProgramsView : UserControl
     private void UpdateLists()
     {
         ListTitle.Text = Navigation.LaunchList ? "Для запуска" : "Запущенные приложения";
-        ListSubtitle.Text = Navigation.LaunchList ? "Добавленные программы и ярлыки" : "Окна, доступные для переноса";
+        ListSubtitle.Text = Navigation.LaunchList ? "Добавленные программы и ярлыки" : "";
+        ListSubtitle.Visibility = Navigation.LaunchList ? Visibility.Visible : Visibility.Collapsed;
         RunningList.Visibility = Navigation.LaunchList ? Visibility.Collapsed : Visibility.Visible;
         LaunchList.Visibility = Navigation.LaunchList ? Visibility.Visible : Visibility.Collapsed;
         CatalogTools.Visibility = Visibility.Collapsed;
@@ -149,8 +153,9 @@ public partial class ProgramsView : UserControl
     }
     private void UpdateEmpty()
     {
-        EmptyPrograms.Text = Navigation.LaunchList ? catalog.CanSave ? "Добавьте программы для запуска" : "Каталог не прочитан. Исходный файл сохранён" : "Нет запущенных приложений с окнами";
-        EmptyPrograms.Visibility = (Navigation.LaunchList ? LaunchList : RunningList).Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyPrograms.Text = Navigation.LaunchList ? catalog.CanSave ? "" : "Каталог не прочитан. Исходный файл сохранён" : "Нет запущенных приложений с окнами";
+        bool showEmpty = (Navigation.LaunchList ? LaunchList : RunningList).Items.Count == 0 && (!Navigation.LaunchList || !catalog.CanSave);
+        EmptyPrograms.Visibility = showEmpty ? Visibility.Visible : Visibility.Collapsed;
     }
     public void SelectMode(bool launch, bool force = false)
     {
