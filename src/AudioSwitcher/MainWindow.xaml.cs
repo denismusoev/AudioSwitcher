@@ -37,8 +37,6 @@ public partial class MainWindow : Window
         InitializeComponent();
         Devices.Style = (Style)FindResource("TvList");
         SettingsChoices.Style = (Style)FindResource("TvList");
-        foreach (var button in new[] { PrimaryCommand, SecondaryCommand, CreateCommand, SettingsCommand, BackCommand })
-        { button.FontSize = 14; button.Padding = new Thickness(6, 7, 6, 7); }
         Programs.MoveBehavior = settingsStore.Load().MoveBehavior;
         Programs.TransferCompleted += Close;
         Programs.StatusChanged += SetStatus;
@@ -103,8 +101,7 @@ public partial class MainWindow : Window
         Programs.Leave();
         navigation.Section = section;
         navigation.LaunchList = section == AppSection.Launch;
-        ControlSurface.Visibility = section == AppSection.Control ? Visibility.Visible : Visibility.Collapsed;
-        Programs.Visibility = section == AppSection.Control ? Visibility.Collapsed : Visibility.Visible;
+        SetPrimarySurfaceVisibility(true);
         gate.RequireRelease();
         if (section == AppSection.Control) { RefreshControl(); AudioControlCard.Focus(); }
         else { Programs.SelectMode(section == AppSection.Launch, force: true); Programs.Enter(); }
@@ -127,13 +124,13 @@ public partial class MainWindow : Window
         ControlTab.IsEnabled = RunningTab.IsEnabled = LaunchTab.IsEnabled = true;
         bool editing = Programs.Editing;
         bool panel = Programs.InPanel;
-        PrimaryCommand.Content = editing ? "A  поле" : navigation.Section == AppSection.Running && !panel ? "A  на экран" : navigation.Section == AppSection.Launch && !panel ? "A  запустить" : "A  выбрать";
-        SecondaryCommand.Content = editing ? "X  удалить" : navigation.Section == AppSection.Running ? "X  закрыть" : "X  изменить";
-        CreateCommand.Content = editing ? "Y  сохранить" : "Y  добавить";
+        PrimaryCommand.Content = overlay == OverlayMode.Settings ? "переключить" : overlay == OverlayMode.Error ? "закрыть" : editing ? "поле" : navigation.Section == AppSection.Running && !panel ? "на экран" : navigation.Section == AppSection.Launch && !panel ? "запустить" : "выбрать";
+        SecondaryCommand.Content = editing ? "удалить" : navigation.Section == AppSection.Running ? "закрыть" : "изменить";
+        CreateCommand.Content = editing ? "сохранить" : "добавить";
         SecondaryCommand.Visibility = overlay == OverlayMode.None && !panel && navigation.Section != AppSection.Control || editing ? Visibility.Visible : Visibility.Collapsed;
         CreateCommand.Visibility = overlay == OverlayMode.None && navigation.Section == AppSection.Launch ? Visibility.Visible : Visibility.Collapsed;
         SettingsCommand.Visibility = overlay == OverlayMode.None && !panel ? Visibility.Visible : Visibility.Collapsed;
-        BackCommand.Content = overlay == OverlayMode.None && navigation.Section == AppSection.Control ? "B  закрыть" : "B  назад";
+        BackCommand.Content = overlay == OverlayMode.None && navigation.Section == AppSection.Control ? "закрыть" : "назад";
     }
 
     private void OpenDevicePicker(bool displays)
@@ -158,8 +155,9 @@ public partial class MainWindow : Window
     private void OpenSettings()
     {
         SettingsChoices.SelectedIndex = Programs.MoveBehavior == WindowMoveBehavior.KeepUtilityFocused ? 0 : 1;
+        SettingsToggle.IsChecked = SettingsChoices.SelectedIndex == 1;
         ShowOverlay(OverlayMode.Settings);
-        SettingsChoices.Focus();
+        SettingsToggle.Focus();
     }
 
     private void ShowError(string message, string details)
@@ -186,6 +184,7 @@ public partial class MainWindow : Window
         DevicePickerOverlay.Visibility = mode == OverlayMode.Devices ? Visibility.Visible : Visibility.Collapsed;
         SettingsSurface.Visibility = mode == OverlayMode.Settings ? Visibility.Visible : Visibility.Collapsed;
         DetailsSurface.Visibility = mode == OverlayMode.Error ? Visibility.Visible : Visibility.Collapsed;
+        if (mode == OverlayMode.Settings) SetPrimarySurfaceVisibility(false);
         gate.RequireRelease();
         UpdateChrome();
     }
@@ -196,6 +195,7 @@ public partial class MainWindow : Window
         overlay = OverlayMode.None;
         OverlayShade.Visibility = Visibility.Collapsed;
         DevicePickerOverlay.Visibility = SettingsSurface.Visibility = DetailsSurface.Visibility = Visibility.Collapsed;
+        SetPrimarySurfaceVisibility(true);
         RestoreFocus();
         gate.RequireRelease();
         UpdateChrome();
@@ -245,6 +245,19 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { ShowError("Не удалось сохранить настройку", ex.Message); }
     }
 
+    private void ToggleSetting()
+    {
+        SettingsToggle.IsChecked = SettingsToggle.IsChecked != true;
+        SettingsChoices.SelectedIndex = SettingsToggle.IsChecked == true ? 1 : 0;
+        ApplySetting();
+    }
+
+    private void SetPrimarySurfaceVisibility(bool visible)
+    {
+        ControlSurface.Visibility = visible && navigation.Section == AppSection.Control ? Visibility.Visible : Visibility.Collapsed;
+        Programs.Visibility = visible && navigation.Section != AppSection.Control ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void PollPad()
     {
         bool connected = Gamepad.TryRead(out var action);
@@ -267,9 +280,9 @@ public partial class MainWindow : Window
         if (overlay != OverlayMode.None)
         {
             if (overlay == OverlayMode.Error) { if (action == PadAction.Up) ErrorScroll.LineUp(); else if (action == PadAction.Down) ErrorScroll.LineDown(); else if (action == PadAction.Confirm) CloseDetails(); }
-            else if (action == PadAction.Up) MoveOverlay(-1);
-            else if (action == PadAction.Down) MoveOverlay(1);
-            else if (action == PadAction.Confirm) { if (overlay == OverlayMode.Devices) _ = ApplySelected(); else ApplySetting(); }
+            else if (overlay == OverlayMode.Devices && action == PadAction.Up) MoveOverlay(-1);
+            else if (overlay == OverlayMode.Devices && action == PadAction.Down) MoveOverlay(1);
+            else if (action == PadAction.Confirm) { if (overlay == OverlayMode.Devices) _ = ApplySelected(); else ToggleSetting(); }
             return;
         }
         switch (action)
@@ -304,7 +317,7 @@ public partial class MainWindow : Window
 
     private void MoveOverlay(int direction)
     {
-        var list = overlay == OverlayMode.Devices ? Devices : SettingsChoices;
+        var list = Devices;
         if (list.Items.Count == 0) return;
         list.SelectedIndex = Math.Clamp(list.SelectedIndex + direction, 0, list.Items.Count - 1);
         list.Focus();
@@ -352,6 +365,11 @@ public partial class MainWindow : Window
     {
         if (ItemsControl.ContainerFromElement(SettingsChoices, e.OriginalSource as DependencyObject) is ListBoxItem item)
         { SettingsChoices.SelectedItem = item; e.Handled = true; ApplySetting(); }
+    }
+    private void SettingsToggleClick(object sender, RoutedEventArgs e)
+    {
+        SettingsChoices.SelectedIndex = SettingsToggle.IsChecked == true ? 1 : 0;
+        ApplySetting();
     }
     private void IgnoreRightButton(object sender, MouseButtonEventArgs e) => e.Handled = true;
     private void PointerDown(object sender, MouseButtonEventArgs e)

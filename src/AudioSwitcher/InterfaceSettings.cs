@@ -11,7 +11,7 @@ internal sealed class InterfaceSettings : IDisposable
     private readonly Application app;
     private readonly Dictionary<string, object> original = new();
     private readonly Action changed;
-    private static readonly int[] Sizes = [12, 13, 14, 15, 16, 18, 22, 24];
+    private static readonly int[] Sizes = [12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 34, 38];
     public double TextScale { get; private set; } = 1;
 
     public InterfaceSettings(Application app, Action changed)

@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -14,6 +15,54 @@ using AudioSwitcher.Platform;
 
 internal static class FixedDesignChecks
 {
+    public static int RunTargetedVisual()
+    {
+        App? app = null;
+        MainWindow? window = null;
+        string root = Path.Combine(Path.GetTempPath(), "AudioSwitcher-targeted-design-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            app.InitializeComponent();
+            window = new MainWindow(new ApplicationSettingsStore(Path.Combine(root, "settings.json")));
+            var appRoot = (FrameworkElement)window.FindName("AppRoot");
+            appRoot.Measure(new Size(2400, 1350));
+            appRoot.Arrange(new Rect(0, 0, 2400, 1350));
+            appRoot.UpdateLayout();
+
+            var audio = (Button)window.FindName("AudioControlCard");
+            var display = (Button)window.FindName("DisplayControlCard");
+            var divider = window.FindName("ControlRowDivider") as Border ?? throw new Exception("Shared row divider missing");
+            var audioCenter = audio.TranslatePoint(new Point(0, audio.ActualHeight / 2), appRoot).Y;
+            var displayCenter = display.TranslatePoint(new Point(0, display.ActualHeight / 2), appRoot).Y;
+            var dividerCenter = divider.TranslatePoint(new Point(0, divider.ActualHeight / 2), appRoot).Y;
+            Require(Math.Abs((dividerCenter - audioCenter) - (displayCenter - dividerCenter)) < 0.6, "Control row divider is not centered");
+            var lineColor = ((SolidColorBrush)app.FindResource("Line")).Color;
+            Require(VisualBorders((DependencyObject)window.FindName("ControlSurface")).Count(border => border.ActualHeight is > 0 and <= 1.5 && border.Background is SolidColorBrush brush && brush.Color == lineColor) == 1, "Control surface must contain exactly one separator");
+            Capture(window, "tv-targeted-control.png");
+
+            ((FrameworkElement)window.FindName("OverlayShade")).Visibility = Visibility.Visible;
+            var picker = (Border)window.FindName("DevicePickerOverlay");
+            picker.Visibility = Visibility.Visible;
+            appRoot.UpdateLayout();
+            Require(picker.ActualWidth is >= 700 and <= 740, $"Picker width is {picker.ActualWidth}");
+            Capture(window, "tv-targeted-picker.png");
+            return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine(error);
+            return 1;
+        }
+        finally
+        {
+            window?.Close();
+            app?.Shutdown();
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
     public static int Run()
     {
         int passed = 0, failed = 0;
@@ -37,7 +86,7 @@ internal static class FixedDesignChecks
                 {
                     await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                     window.UpdateLayout();
-                    Check("TV shell is fixed at 1220 by 760", () => Require(window.ActualWidth == 1220 && window.ActualHeight == 760, $"{window.ActualWidth}x{window.ActualHeight}"));
+                    Check("Reference viewport is fixed at 2400 by 1350", () => Require(window.ActualWidth == 2400 && window.ActualHeight == 1350, $"{window.ActualWidth}x{window.ActualHeight}"));
                     Check("PS5 shell uses a full-bleed background", () =>
                     {
                         var frame = (Border)window.FindName("WindowFrame");
@@ -61,7 +110,9 @@ internal static class FixedDesignChecks
                         var launchOrigin = launch.TranslatePoint(new Point(), window);
                         Require(Math.Abs(controlOrigin.X - runningOrigin.X) < 0.5 && Math.Abs(runningOrigin.X - launchOrigin.X) < 0.5, "Root items do not share a vertical axis");
                         Require(runningOrigin.Y >= controlOrigin.Y + control.ActualHeight && launchOrigin.Y >= runningOrigin.Y + running.ActualHeight, "Root items are not stacked vertically");
-                        Require(control.ActualWidth >= 260 && running.ActualWidth >= 260 && launch.ActualWidth >= 260, "Navigation rail is too narrow");
+                        Require(controlOrigin.X is >= 208 and <= 218, $"Navigation starts at {controlOrigin.X}");
+                        Require(control.ActualWidth is >= 492 and <= 502 && running.ActualWidth == control.ActualWidth && launch.ActualWidth == control.ActualWidth, $"Navigation width is {control.ActualWidth}");
+                        Require(control.ActualHeight is >= 128 and <= 136, $"Navigation row height is {control.ActualHeight}");
                     });
                     Check("Control actions form stacked settings rows in the content pane", () =>
                     {
@@ -71,12 +122,24 @@ internal static class FixedDesignChecks
                         var audioOrigin = audio.TranslatePoint(new Point(), window);
                         var displayOrigin = display.TranslatePoint(new Point(), window);
                         var navigationOrigin = navigation.TranslatePoint(new Point(), window);
-                        Require(audioOrigin.X >= navigationOrigin.X + navigation.ActualWidth + 40, "Settings rows do not start in the right pane");
+                        Require(audioOrigin.X is >= 835 and <= 845, $"Content starts at {audioOrigin.X}");
                         Require(Math.Abs(audioOrigin.X - displayOrigin.X) < 0.5 && displayOrigin.Y >= audioOrigin.Y + audio.ActualHeight, "Settings rows are not vertically aligned");
-                        Require(audio.ActualWidth >= 650 && display.ActualWidth >= 650, "Settings rows are too narrow");
-                        Require(audio.ActualHeight is >= 76 and <= 108 && display.ActualHeight is >= 76 and <= 108, "Settings rows do not use PS5 proportions");
+                        Require(audio.ActualWidth is >= 1310 and <= 1330 && display.ActualWidth == audio.ActualWidth, $"Settings row width is {audio.ActualWidth}");
+                        Require(audio.ActualHeight is >= 120 and <= 132 && display.ActualHeight is >= 120 and <= 132, $"Settings row height is {audio.ActualHeight}");
                         Require(((FrameworkElement)window.FindName("ControlSurface")).IsVisible, "Control surface hidden");
                         Require(!VisualText(window).Any(text => text is "Быстрое управление" or "Звук и основной экран — без выхода на рабочий стол"), "Removed control-page introduction is still rendered");
+                    });
+                    Check("Control actions have one separator centered between the rows", () =>
+                    {
+                        var audio = (Button)window.FindName("AudioControlCard");
+                        var display = (Button)window.FindName("DisplayControlCard");
+                        var divider = window.FindName("ControlRowDivider") as Border ?? throw new Exception("Shared row divider missing");
+                        var audioCenter = audio.TranslatePoint(new Point(0, audio.ActualHeight / 2), window).Y;
+                        var displayCenter = display.TranslatePoint(new Point(0, display.ActualHeight / 2), window).Y;
+                        var dividerCenter = divider.TranslatePoint(new Point(0, divider.ActualHeight / 2), window).Y;
+                        Require(Math.Abs((dividerCenter - audioCenter) - (displayCenter - dividerCenter)) < 0.6, $"Divider at {dividerCenter} is not centered between {audioCenter} and {displayCenter}");
+                        var lineColor = ((SolidColorBrush)app.FindResource("Line")).Color;
+                        Require(VisualBorders((DependencyObject)window.FindName("ControlSurface")).Count(border => border.ActualHeight is > 0 and <= 1.5 && border.Background is SolidColorBrush brush && brush.Color == lineColor) == 1, "Expected exactly one visible row separator");
                     });
                     Capture(window, "tv-implemented-control.png");
 
@@ -130,10 +193,15 @@ internal static class FixedDesignChecks
 
                     Call(window, "Execute", PadAction.Settings);
                     window.UpdateLayout();
-                    Check("Menu opens one settings overlay with safe choice selected", () =>
+                    Check("Menu opens reference-aligned settings pane with one toggle row", () =>
                     {
                         Require(((FrameworkElement)window.FindName("OverlayShade")).IsVisible && ((FrameworkElement)window.FindName("SettingsSurface")).IsVisible, "Settings overlay missing");
                         Require(((ListBox)window.FindName("SettingsChoices")).SelectedIndex == 0, "Safe keep-open choice is not selected");
+                        var settings = (FrameworkElement)window.FindName("SettingsSurface");
+                        var settingsOrigin = settings.TranslatePoint(new Point(), window);
+                        Require(settingsOrigin.X is >= 835 and <= 845 && settings.ActualWidth is >= 1310 and <= 1330, $"Settings pane is {settingsOrigin.X}, {settings.ActualWidth}");
+                        Require(window.FindName("SettingsToggle") is ToggleButton toggle && toggle.IsVisible && toggle.IsKeyboardFocused, "Single settings toggle is not focused");
+                        Require(!programs.IsVisible, "Underlying programme surface remains visible through settings pane");
                         Require(window.FindName("DevicePickerOverlay") is FrameworkElement picker && !picker.IsVisible, "Two overlays are visible");
                     });
                     Capture(window, "tv-implemented-settings.png");
@@ -148,6 +216,8 @@ internal static class FixedDesignChecks
                         var origin = shade.TranslatePoint(new Point(), window);
                         Require(card.IsVisible && ((ListBox)window.FindName("Devices")).IsKeyboardFocusWithin, "Device picker not focused");
                         Require(Math.Abs(origin.X) < 0.5 && Math.Abs(origin.Y) < 0.5 && Math.Abs(shade.ActualWidth - window.ActualWidth) < 0.5 && Math.Abs(shade.ActualHeight - window.ActualHeight) < 0.5, "Backdrop does not cover the full window");
+                        Require(window.FindName("ModalBackdrop") is FrameworkElement backdrop && backdrop.IsVisible, "Device picker backdrop missing");
+                        Require(card.ActualWidth is >= 700 and <= 740 && card.ActualHeight >= 1100, $"Picker is {card.ActualWidth}x{card.ActualHeight}");
                         Require(card.Background is SolidColorBrush brush && brush.Color.A == 255, "Modal surface is translucent");
                     });
                     Capture(window, "tv-implemented-audio-picker.png");
@@ -206,6 +276,15 @@ internal static class FixedDesignChecks
             if (VisualChild<T>(child) is T nested) return nested;
         }
         return null;
+    }
+    private static IEnumerable<Border> VisualBorders(DependencyObject parent)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is Border border) yield return border;
+            foreach (var nested in VisualBorders(child)) yield return nested;
+        }
     }
     private static object? Call(object instance, string name, params object?[] args) => instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(instance, args);
     private static void Capture(Window window, string name)
