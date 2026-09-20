@@ -74,12 +74,9 @@
     <Style x:Key="TvList" TargetType="ListBox"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="ItemContainerStyle" Value="{StaticResource SingleChoiceItem}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ScrollViewer Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer></ControlTemplate></Setter.Value></Setter></Style>
   </Window.Resources>
   <Grid x:Name="AppRoot" Background="{DynamicResource WindowSurface}" ClipToBounds="True">
-    <Viewbox x:Name="DecorativeBackground" Stretch="Fill" IsHitTestVisible="False">
-      <Grid Width="2400" Height="1350">
-        <Ellipse Width="900" Height="650" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-50,-315,0,0" Opacity="0.58"><Ellipse.Fill><RadialGradientBrush><GradientStop Color="#BDA19F" Offset="0"/><GradientStop Color="#62575C" Offset="0.42"/><GradientStop Color="#0062575C" Offset="1"/></RadialGradientBrush></Ellipse.Fill><Ellipse.Effect><BlurEffect Radius="90"/></Ellipse.Effect></Ellipse>
-        <Ellipse Width="1420" Height="940" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="-180,0,0,-140" Opacity="0.46"><Ellipse.Fill><RadialGradientBrush><GradientStop Color="#96A4AD" Offset="0"/><GradientStop Color="#4B5B66" Offset="0.46"/><GradientStop Color="#004B5B66" Offset="1"/></RadialGradientBrush></Ellipse.Fill><Ellipse.Effect><BlurEffect Radius="150"/></Ellipse.Effect></Ellipse>
-      </Grid>
-    </Viewbox>
+    <Image x:Name="DecorativeBackground" Source="/AudioSwitcher;component/Assets/ps5-settings-background.png" Stretch="UniformToFill" IsHitTestVisible="False" Margin="-15">
+      <Image.Effect><BlurEffect Radius="15" RenderingBias="Quality"/></Image.Effect>
+    </Image>
     <Border x:Name="WindowFrame" Panel.ZIndex="1" Background="Transparent" Padding="80,60,110,76" CornerRadius="0" BorderThickness="0">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="75"/><RowDefinition Height="*"/></Grid.RowDefinitions>

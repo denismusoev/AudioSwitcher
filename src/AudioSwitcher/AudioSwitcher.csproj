@@ -9,4 +9,7 @@
     <Version>1.6.1</Version>
     <Description>Portable audio output, primary display and program manager</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\ps5-settings-background.png" />
+  </ItemGroup>
 </Project>

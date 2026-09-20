@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using AudioSwitcher;
 using AudioSwitcher.Controls;
@@ -29,6 +30,16 @@ internal static class FixedDesignChecks
             window.Show();
             var appRoot = (FrameworkElement)window.FindName("AppRoot");
             window.UpdateLayout();
+            var background = window.FindName("DecorativeBackground") as Image;
+            var backgroundBitmap = background?.Source as BitmapSource;
+            Require(background != null
+                && backgroundBitmap != null
+                && background.Stretch == Stretch.UniformToFill,
+                $"Application background is not the bundled full-bleed reference image: element={background?.GetType().Name ?? "null"}, source={background?.Source?.GetType().Name ?? "null"}, pixels={backgroundBitmap?.PixelWidth ?? 0}x{backgroundBitmap?.PixelHeight ?? 0}");
+            Require(background!.Effect is BlurEffect { Radius: 15 }
+                && background.Margin == new Thickness(-15),
+                "Application background does not use the requested 15-level blur with protected edges");
+            Console.WriteLine("PASS Application background uses the bundled full-bleed reference image");
             Require(!VisualAncestors(appRoot).OfType<Viewbox>().Any(), "Interactive root is still scaled by a Viewbox");
             Require(Math.Abs(appRoot.ActualWidth - window.ActualWidth) < 1 && Math.Abs(appRoot.ActualHeight - window.ActualHeight) < 1,
                 $"Interactive root {appRoot.ActualWidth:0.##}x{appRoot.ActualHeight:0.##} does not fill window {window.ActualWidth:0.##}x{window.ActualHeight:0.##}");
@@ -184,7 +195,7 @@ internal static class FixedDesignChecks
             Capture(window, "tv-targeted-picker.png");
             Console.WriteLine("PASS Focus indicators use shared brush and geometry");
             Console.WriteLine("PASS Device picker focuses its initial and moved selection");
-            Console.WriteLine("Passed: 2, Failed: 0");
+            Console.WriteLine("Passed: 3, Failed: 0");
             return 0;
         }
         catch (Exception error)
