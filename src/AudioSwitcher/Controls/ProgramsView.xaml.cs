@@ -131,6 +131,8 @@ public partial class ProgramsView : UserControl
     }
     private void UpdateLists()
     {
+        ListTitle.Text = Navigation.LaunchList ? "Для запуска" : "Запущенные приложения";
+        ListSubtitle.Text = Navigation.LaunchList ? "Добавленные программы и ярлыки" : "Окна, доступные для переноса";
         RunningList.Visibility = Navigation.LaunchList ? Visibility.Collapsed : Visibility.Visible;
         LaunchList.Visibility = Navigation.LaunchList ? Visibility.Visible : Visibility.Collapsed;
         CatalogTools.Visibility = Visibility.Collapsed;

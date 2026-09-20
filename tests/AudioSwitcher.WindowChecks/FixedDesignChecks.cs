@@ -38,16 +38,43 @@ internal static class FixedDesignChecks
                     await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                     window.UpdateLayout();
                     Check("TV shell is fixed at 1220 by 760", () => Require(window.ActualWidth == 1220 && window.ActualHeight == 760, $"{window.ActualWidth}x{window.ActualHeight}"));
+                    Check("PS5 shell uses a full-bleed background", () =>
+                    {
+                        var frame = (Border)window.FindName("WindowFrame");
+                        var origin = frame.TranslatePoint(new Point(), window);
+                        Require(Math.Abs(origin.X) < 0.5 && Math.Abs(origin.Y) < 0.5, $"Shell starts at {origin}");
+                        Require(Math.Abs(frame.ActualWidth - window.ActualWidth) < 0.5 && Math.Abs(frame.ActualHeight - window.ActualHeight) < 0.5, $"Shell is {frame.ActualWidth}x{frame.ActualHeight}");
+                        Require(frame.CornerRadius == new CornerRadius(0), $"Shell radius is {frame.CornerRadius}");
+                    });
                     Check("Three root sections replace device and settings tabs", () =>
                     {
                         Require(window.FindName("ControlTab") is Button control && control.IsVisible && window.FindName("RunningTab") is Button running && running.IsVisible && window.FindName("LaunchTab") is Button launch && launch.IsVisible, "Root sections missing");
                         Require(window.FindName("AudioTab") == null && window.FindName("DisplayTab") == null && window.FindName("SettingsTab") == null, "Old tabs remain");
                     });
-                    Check("Control root exposes exactly two large task cards", () =>
+                    Check("Root navigation forms a PS5-style vertical rail", () =>
+                    {
+                        var control = (Button)window.FindName("ControlTab");
+                        var running = (Button)window.FindName("RunningTab");
+                        var launch = (Button)window.FindName("LaunchTab");
+                        var controlOrigin = control.TranslatePoint(new Point(), window);
+                        var runningOrigin = running.TranslatePoint(new Point(), window);
+                        var launchOrigin = launch.TranslatePoint(new Point(), window);
+                        Require(Math.Abs(controlOrigin.X - runningOrigin.X) < 0.5 && Math.Abs(runningOrigin.X - launchOrigin.X) < 0.5, "Root items do not share a vertical axis");
+                        Require(runningOrigin.Y >= controlOrigin.Y + control.ActualHeight && launchOrigin.Y >= runningOrigin.Y + running.ActualHeight, "Root items are not stacked vertically");
+                        Require(control.ActualWidth >= 260 && running.ActualWidth >= 260 && launch.ActualWidth >= 260, "Navigation rail is too narrow");
+                    });
+                    Check("Control actions form stacked settings rows in the content pane", () =>
                     {
                         var audio = (Button)window.FindName("AudioControlCard");
                         var display = (Button)window.FindName("DisplayControlCard");
-                        Require(audio.ActualHeight >= 118 && display.ActualHeight >= 118, "Task cards are not TV sized");
+                        var navigation = (Button)window.FindName("ControlTab");
+                        var audioOrigin = audio.TranslatePoint(new Point(), window);
+                        var displayOrigin = display.TranslatePoint(new Point(), window);
+                        var navigationOrigin = navigation.TranslatePoint(new Point(), window);
+                        Require(audioOrigin.X >= navigationOrigin.X + navigation.ActualWidth + 40, "Settings rows do not start in the right pane");
+                        Require(Math.Abs(audioOrigin.X - displayOrigin.X) < 0.5 && displayOrigin.Y >= audioOrigin.Y + audio.ActualHeight, "Settings rows are not vertically aligned");
+                        Require(audio.ActualWidth >= 650 && display.ActualWidth >= 650, "Settings rows are too narrow");
+                        Require(audio.ActualHeight is >= 76 and <= 108 && display.ActualHeight is >= 76 and <= 108, "Settings rows do not use PS5 proportions");
                         Require(((FrameworkElement)window.FindName("ControlSurface")).IsVisible, "Control surface hidden");
                         Require(!VisualText(window).Any(text => text is "Быстрое управление" or "Звук и основной экран — без выхода на рабочий стол"), "Removed control-page introduction is still rendered");
                     });

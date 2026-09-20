@@ -2,3 +2,4 @@
 **/obj/
 artifacts/
 *.user
+.superpowers/

@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AudioSwitcher — интерактивный PS reference polish</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f2f1f4;
+      --ink-dim: rgba(242, 241, 244, .68);
+      --ink-faint: rgba(242, 241, 244, .38);
+      --line: rgba(224, 224, 232, .105);
+      --focus: rgba(236, 235, 241, .68);
+      --focus-fill: rgba(226, 225, 234, .055);
+      --panel: rgba(29, 31, 39, .94);
+      --ease: cubic-bezier(.22, 1, .36, 1);
+      --left: clamp(264px, 29vw, 470px);
+      font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #080a13;
+    }
+
+    body {
+      color: var(--ink);
+      font-weight: 300;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { color: inherit; font: inherit; }
+
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      min-width: 960px;
+      min-height: 540px;
+      overflow: hidden;
+      isolation: isolate;
+      background:
+        radial-gradient(ellipse 52% 108% at 10% 12%, rgba(161, 135, 133, .37), rgba(93, 79, 84, .15) 41%, transparent 72%),
+        radial-gradient(ellipse 48% 64% at 11% 104%, rgba(105, 126, 139, .35), rgba(53, 70, 82, .12) 48%, transparent 75%),
+        radial-gradient(ellipse 56% 72% at 66% 71%, rgba(67, 61, 76, .24), transparent 69%),
+        linear-gradient(109deg, #191a20 0%, #10121b 48%, #080a15 100%);
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: -8%;
+      z-index: -1;
+      background:
+        radial-gradient(ellipse 20% 72% at 24% 44%, rgba(228, 204, 195, .10), transparent 68%),
+        radial-gradient(ellipse 12% 65% at 52% 51%, rgba(204, 198, 220, .055), transparent 72%);
+      filter: blur(46px);
+      transform: scale(1.08);
+    }
+
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 9;
+      pointer-events: none;
+      background: linear-gradient(90deg, rgba(4, 5, 9, .03), transparent 24%, rgba(2, 3, 8, .1));
+      box-shadow: inset 0 0 96px rgba(0, 0, 0, .18);
+    }
+
+    .app {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: clamp(100px, 14vh, 150px) 1fr clamp(66px, 8vh, 86px);
+      padding: 0 clamp(58px, 5.1vw, 104px);
+      transition: filter 240ms var(--ease), opacity 240ms var(--ease), transform 240ms var(--ease);
+    }
+
+    .app.obscured { filter: blur(8px); opacity: .34; transform: scale(.997); }
+
+    .app-title {
+      align-self: end;
+      margin: 0 0 13px;
+      font-size: clamp(31px, 2.65vw, 54px);
+      line-height: 1;
+      letter-spacing: -.018em;
+      font-weight: 250;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: var(--left) minmax(0, 1fr);
+      gap: clamp(62px, 6.3vw, 130px);
+      min-height: 0;
+      padding-top: clamp(22px, 3vh, 34px);
+    }
+
+    .side-nav {
+      padding-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(7px, 1.05vh, 13px);
+    }
+
+    .nav-item {
+      appearance: none;
+      width: 100%;
+      height: clamp(60px, 8.5vh, 94px);
+      padding: 0 clamp(22px, 2vw, 34px);
+      border: 2px solid transparent;
+      border-radius: 3px;
+      background: transparent;
+      color: rgba(242, 241, 244, .80);
+      text-align: left;
+      font-size: clamp(19px, 1.55vw, 32px);
+      font-weight: 300;
+      letter-spacing: -.01em;
+      cursor: pointer;
+      transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+
+    .nav-item:hover { color: var(--ink); background: rgba(255,255,255,.025); }
+    .nav-item.active { color: var(--ink); border-color: var(--focus); background: var(--focus-fill); }
+    .nav-item:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+    .content { min-width: 0; overflow: hidden; }
+
+    .screen {
+      display: none;
+      height: 100%;
+      animation: arrive 230ms var(--ease) both;
+    }
+    .screen.active { display: block; }
+
+    @keyframes arrive {
+      from { opacity: 0; transform: translateX(12px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .screen-heading {
+      margin: 0 0 clamp(12px, 2vh, 21px);
+      color: rgba(242, 241, 244, .88);
+      font-size: clamp(22px, 1.62vw, 34px);
+      line-height: 1.25;
+      font-weight: 300;
+      letter-spacing: -.012em;
+    }
+
+    .intro {
+      max-width: 980px;
+      margin: 0 0 clamp(26px, 4.4vh, 48px);
+      color: rgba(242, 241, 244, .77);
+      font-size: clamp(17px, 1.42vw, 29px);
+      line-height: 1.48;
+      text-wrap: pretty;
+    }
+
+    .rows { display: flex; flex-direction: column; }
+
+    .row {
+      position: relative;
+      appearance: none;
+      width: 100%;
+      min-height: clamp(64px, 8.2vh, 88px);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 34px;
+      padding: 0 0 1px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .row::before {
+      content: "";
+      position: absolute;
+      inset: 5px -18px 4px;
+      border: 2px solid transparent;
+      border-radius: 3px;
+      pointer-events: none;
+      transition: border-color 150ms ease, background 150ms ease;
+    }
+
+    .row:hover::before { background: rgba(255,255,255,.022); }
+    .row.focused::before { border-color: var(--focus); background: var(--focus-fill); }
+    .row:focus-visible { outline: none; }
+    .row:focus-visible::before { border-color: var(--ink); }
+
+    .row-copy { min-width: 0; }
+    .row-title {
+      display: block;
+      color: rgba(242, 241, 244, .88);
+      font-size: clamp(18px, 1.42vw, 29px);
+      font-weight: 300;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row-subtitle {
+      display: block;
+      margin-top: 4px;
+      color: var(--ink-faint);
+      font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      font-size: clamp(12px, .92vw, 18px);
+      font-weight: 400;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row-value {
+      max-width: 410px;
+      color: rgba(242, 241, 244, .57);
+      font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      font-size: clamp(15px, 1.14vw, 23px);
+      font-weight: 350;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row-value.state { color: rgba(242, 241, 244, .82); }
+
+    .footer {
+      display: grid;
+      grid-template-columns: var(--left) 1fr;
+      gap: clamp(62px, 6.3vw, 130px);
+      align-items: center;
+      color: var(--ink-faint);
+      font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      font-size: clamp(12px, .86vw, 17px);
+    }
+    .hints { display: flex; justify-content: flex-end; gap: clamp(20px, 2.25vw, 46px); }
+    .hint { display: inline-flex; align-items: center; gap: 9px; color: rgba(242,241,244,.57); white-space: nowrap; }
+    .key {
+      min-width: 26px;
+      height: 26px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0 7px;
+      border: 1px solid rgba(242,241,244,.44);
+      border-radius: 999px;
+      color: rgba(242,241,244,.80);
+      font-size: 12px;
+      line-height: 1;
+    }
+    .key.wide { border-radius: 4px; }
+
+    .shade {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      background: rgba(4, 5, 10, .46);
+      opacity: 0;
+      transition: opacity 220ms ease;
+    }
+    .shade.visible { display: block; opacity: 1; }
+
+    .drawer {
+      position: absolute;
+      top: 5.2vh;
+      right: clamp(52px, 7.4vw, 150px);
+      bottom: 4.8vh;
+      z-index: 30;
+      width: clamp(310px, 28vw, 560px);
+      display: none;
+      grid-template-rows: auto 1fr auto;
+      padding: clamp(24px, 2.15vw, 42px);
+      background: linear-gradient(112deg, rgba(42,44,51,.97), rgba(24,26,34,.98));
+      border: 1px solid rgba(235,235,241,.12);
+      box-shadow: 0 14px 46px rgba(0,0,0,.28);
+      transform: translateX(28px);
+      opacity: 0;
+      transition: transform 250ms var(--ease), opacity 210ms ease;
+    }
+    .drawer.visible { display: grid; transform: translateX(0); opacity: 1; }
+    .drawer-head { padding: 3px 3px clamp(18px, 2.4vh, 30px); }
+    .drawer-kicker { color: var(--ink-faint); font-size: 14px; margin-bottom: 7px; }
+    .drawer-title { margin: 0; font-size: clamp(24px, 1.75vw, 35px); font-weight: 300; }
+    .drawer .row { min-height: clamp(58px, 7.4vh, 80px); }
+    .drawer .row::before { inset-inline: -12px; }
+    .drawer .row-title { font-size: clamp(17px, 1.17vw, 23px); }
+    .drawer .row-value { font-size: clamp(13px, .92vw, 18px); }
+    .drawer-footer { display: flex; justify-content: flex-end; gap: 25px; padding-top: 22px; }
+
+    .toast {
+      position: absolute;
+      left: 50%;
+      bottom: 5.8vh;
+      z-index: 50;
+      padding: 11px 18px;
+      border: 1px solid rgba(242,241,244,.14);
+      background: rgba(20,22,29,.92);
+      color: rgba(242,241,244,.76);
+      font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      font-size: 14px;
+      transform: translate(-50%, 16px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease, transform 220ms var(--ease);
+    }
+    .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-aspect-ratio: 4/3) {
+      :root { --left: 250px; }
+      .app { padding-inline: 44px; }
+      .workspace, .footer { gap: 52px; }
+      .intro { font-size: 20px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="app" data-app>
+      <h1 class="app-title">AudioSwitcher</h1>
+
+      <div class="workspace">
+        <nav class="side-nav" aria-label="Разделы">
+          <button class="nav-item active" data-section="control">Управление</button>
+          <button class="nav-item" data-section="running">Запущенные</button>
+          <button class="nav-item" data-section="launch">Для запуска</button>
+        </nav>
+
+        <div class="content">
+          <section class="screen active" data-screen="control">
+            <h2 class="screen-heading">Быстрые действия</h2>
+            <p class="intro">Переключайте звук и главный экран, не возвращаясь к рабочему столу Windows.</p>
+            <div class="rows" data-list>
+              <button class="row focused" data-action="audio">
+                <span class="row-copy"><span class="row-title">Устройство звука</span><span class="row-subtitle">NVIDIA High Definition Audio</span></span>
+                <span class="row-value state">G27U</span>
+              </button>
+              <button class="row" data-action="display">
+                <span class="row-copy"><span class="row-title">Основной экран</span><span class="row-subtitle">3840 × 2160 · 144 Гц</span></span>
+                <span class="row-value state">G27U</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="screen" data-screen="running">
+            <h2 class="screen-heading">Открытые приложения</h2>
+            <p class="intro">Выберите приложение, чтобы перенести его окно на главный экран.</p>
+            <div class="rows" data-list>
+              <button class="row focused" data-action="move"><span class="row-copy"><span class="row-title">Steam</span><span class="row-subtitle">Библиотека · Экран 2</span></span><span class="row-value">1 окно</span></button>
+              <button class="row" data-action="move"><span class="row-copy"><span class="row-title">Moonlight</span><span class="row-subtitle">Moonlight Game Streaming · Экран 1</span></span><span class="row-value">1 окно</span></button>
+              <button class="row" data-action="move"><span class="row-copy"><span class="row-title">Проводник</span><span class="row-subtitle">Загрузки · Экран 2</span></span><span class="row-value">2 окна</span></button>
+              <button class="row" data-action="move"><span class="row-copy"><span class="row-title">Discord</span><span class="row-subtitle">Друзья · Экран 1</span></span><span class="row-value">1 окно</span></button>
+            </div>
+          </section>
+
+          <section class="screen" data-screen="launch">
+            <h2 class="screen-heading">Каталог запуска</h2>
+            <p class="intro">Запускайте программы, ярлыки и ссылки с телевизора.</p>
+            <div class="rows" data-list>
+              <button class="row focused" data-action="launch"><span class="row-copy"><span class="row-title">Steam</span><span class="row-subtitle">Игры и библиотека</span></span><span class="row-value">Программа</span></button>
+              <button class="row" data-action="launch"><span class="row-copy"><span class="row-title">Moonlight</span><span class="row-subtitle">Потоковая передача с игрового ПК</span></span><span class="row-value">Программа</span></button>
+              <button class="row" data-action="launch"><span class="row-copy"><span class="row-title">Plex</span><span class="row-subtitle">Домашняя медиатека</span></span><span class="row-value">Ссылка</span></button>
+              <button class="row" data-action="launch"><span class="row-copy"><span class="row-title">YouTube</span><span class="row-subtitle">youtube.com/tv</span></span><span class="row-value">Ссылка</span></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <footer class="footer">
+        <span data-status>Готово</span>
+        <div class="hints" data-hints></div>
+      </footer>
+    </section>
+
+    <div class="shade" data-shade></div>
+    <aside class="drawer" data-drawer aria-modal="true" role="dialog" aria-label="Панель выбора">
+      <header class="drawer-head">
+        <div class="drawer-kicker" data-drawer-kicker>Выбор</div>
+        <h2 class="drawer-title" data-drawer-title>Устройство звука</h2>
+      </header>
+      <div class="rows" data-drawer-rows></div>
+      <footer class="drawer-footer"><span class="hint"><span class="key">A</span>Выбрать</span><span class="hint"><span class="key">B</span>Назад</span></footer>
+    </aside>
+    <div class="toast" data-toast role="status"></div>
+  </main>
+
+  <script>
+    const state = { section: 'control', index: 0, drawer: null, drawerIndex: 0 };
+    const order = ['control', 'running', 'launch'];
+    const hints = {
+      control: [['A','Выбрать'], ['Q / E','Раздел'], ['S','Настройки'], ['Esc','Закрыть']],
+      running: [['A','На главный экран'], ['X','Закрыть'], ['Q / E','Раздел'], ['Esc','Назад']],
+      launch: [['A','Запустить'], ['X','Изменить'], ['Y','Добавить'], ['Esc','Назад']]
+    };
+    const drawers = {
+      audio: {
+        kicker: 'Выберите устройство', title: 'Устройство звука',
+        items: [['Динамики','fifine Microphone',''], ['G27U','NVIDIA High Definition Audio','Активно'], ['Наушники','Oculus Virtual Audio Device','']]
+      },
+      display: {
+        kicker: 'Выберите монитор', title: 'Основной экран',
+        items: [['G27U','3840 × 2160 · 144 Гц','Главный'], ['LG TV','3840 × 2160 · 60 Гц','Экран 2'], ['DELL U2412M','1920 × 1200 · 60 Гц','Экран 3']]
+      },
+      settings: {
+        kicker: 'После переноса окна', title: 'Настройки',
+        items: [['Оставаться в AudioSwitcher','Окно переместится без передачи фокуса','Выбрано'], ['Переключаться в приложение','Приложение получит фокус, AudioSwitcher закроется','']]
+      }
+    };
+
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+    function activeScreen() { return $(`[data-screen="${state.section}"]`); }
+    function activeRows() { return $$('[data-list] .row', activeScreen()); }
+
+    function renderHints() {
+      $('[data-hints]').innerHTML = hints[state.section].map(([key, label]) =>
+        `<span class="hint"><span class="key ${key.length > 2 ? 'wide' : ''}">${key}</span>${label}</span>`
+      ).join('');
+    }
+
+    function renderSection(section, focusNav = false) {
+      state.section = section;
+      state.index = 0;
+      $$('[data-section]').forEach(button => button.classList.toggle('active', button.dataset.section === section));
+      $$('[data-screen]').forEach(screen => screen.classList.toggle('active', screen.dataset.screen === section));
+      updateFocus(activeRows(), 0);
+      renderHints();
+      $('[data-status]').textContent = section === 'control' ? 'Готово' : '';
+      if (focusNav) $(`[data-section="${section}"]`).focus();
+    }
+
+    function updateFocus(rows, index, moveDomFocus = false) {
+      if (!rows.length) return;
+      const next = Math.max(0, Math.min(index, rows.length - 1));
+      rows.forEach((row, i) => row.classList.toggle('focused', i === next));
+      if (state.drawer) state.drawerIndex = next; else state.index = next;
+      if (moveDomFocus) rows[next].focus({ preventScroll: true });
+    }
+
+    function showToast(message) {
+      const toast = $('[data-toast]');
+      toast.textContent = message;
+      toast.classList.add('visible');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove('visible'), 1800);
+    }
+
+    function openDrawer(type) {
+      const spec = drawers[type];
+      state.drawer = type;
+      state.drawerIndex = Math.max(0, spec.items.findIndex(item => item[2] === 'Активно' || item[2] === 'Главный' || item[2] === 'Выбрано'));
+      $('[data-drawer-kicker]').textContent = spec.kicker;
+      $('[data-drawer-title]').textContent = spec.title;
+      $('[data-drawer-rows]').innerHTML = spec.items.map(([title, subtitle, value], index) =>
+        `<button class="row ${index === state.drawerIndex ? 'focused' : ''}" data-drawer-item>
+          <span class="row-copy"><span class="row-title">${title}</span><span class="row-subtitle">${subtitle}</span></span>
+          <span class="row-value state">${value}</span>
+        </button>`
+      ).join('');
+      $('[data-app]').classList.add('obscured');
+      $('[data-shade]').classList.add('visible');
+      $('[data-drawer]').classList.add('visible');
+      const rows = $$('[data-drawer-item]');
+      rows.forEach((row, index) => row.addEventListener('click', () => chooseDrawer(index)));
+      rows[state.drawerIndex].focus({ preventScroll: true });
+    }
+
+    function closeDrawer() {
+      state.drawer = null;
+      $('[data-drawer]').classList.remove('visible');
+      $('[data-shade]').classList.remove('visible');
+      $('[data-app]').classList.remove('obscured');
+      activeRows()[state.index]?.focus({ preventScroll: true });
+    }
+
+    function chooseDrawer(index) {
+      const item = drawers[state.drawer].items[index];
+      showToast(state.drawer === 'settings' ? 'Настройка сохранена' : `${item[0]} выбрано`);
+      closeDrawer();
+    }
+
+    function activateRow() {
+      const row = activeRows()[state.index];
+      const action = row?.dataset.action;
+      if (action === 'audio' || action === 'display') openDrawer(action);
+      else if (action === 'move') showToast(`${$('.row-title', row).textContent}: окно перемещено`);
+      else if (action === 'launch') showToast(`${$('.row-title', row).textContent}: запуск`);
+    }
+
+    $$('[data-section]').forEach(button => button.addEventListener('click', () => renderSection(button.dataset.section, true)));
+    $$('[data-list] .row').forEach(row => row.addEventListener('click', () => {
+      state.index = activeRows().indexOf(row);
+      updateFocus(activeRows(), state.index);
+      activateRow();
+    }));
+    $('[data-shade]').addEventListener('click', closeDrawer);
+
+    document.addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      if (state.drawer) {
+        const rows = $$('[data-drawer-item]');
+        if (key === 'arrowdown') updateFocus(rows, state.drawerIndex + 1, true);
+        else if (key === 'arrowup') updateFocus(rows, state.drawerIndex - 1, true);
+        else if (key === 'enter' || key === 'a') chooseDrawer(state.drawerIndex);
+        else if (key === 'escape' || key === 'b') closeDrawer();
+        else return;
+        event.preventDefault();
+        return;
+      }
+
+      const rows = activeRows();
+      if (key === 'arrowdown') updateFocus(rows, state.index + 1, true);
+      else if (key === 'arrowup') updateFocus(rows, state.index - 1, true);
+      else if (key === 'enter' || key === 'a') activateRow();
+      else if (key === 'q' || key === 'e') {
+        const delta = key === 'q' ? -1 : 1;
+        const next = (order.indexOf(state.section) + delta + order.length) % order.length;
+        renderSection(order[next]);
+      }
+      else if (key === 's') openDrawer('settings');
+      else if (key === 'escape' || key === 'b') showToast(state.section === 'control' ? 'Закрытие приложения' : 'Возврат в управление');
+      else return;
+      event.preventDefault();
+    });
+
+    renderHints();
+  </script>
+</body>
+</html>

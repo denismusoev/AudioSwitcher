@@ -10,9 +10,10 @@
  </UserControl.Resources>
  <Grid x:Name="ViewRoot">
   <Grid x:Name="ListsSurface">
-   <ListBox x:Name="RunningList" Style="{StaticResource ProgramList}" ItemTemplate="{StaticResource RunningRow}" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Запущенные пользовательские приложения"/>
-   <ListBox x:Name="LaunchList" Style="{StaticResource ProgramList}" Visibility="Collapsed" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Добавленные программы для запуска"/>
-   <TextBlock x:Name="EmptyPrograms" Margin="19,24" TextWrapping="Wrap" Foreground="{DynamicResource MutedText}" IsHitTestVisible="False"/>
+   <StackPanel Height="72" VerticalAlignment="Top"><TextBlock x:Name="ListTitle" FontSize="29" FontWeight="Light"/><TextBlock x:Name="ListSubtitle" Margin="0,8,0,0" FontSize="16" Foreground="{DynamicResource MutedText}"/></StackPanel>
+   <ListBox x:Name="RunningList" Margin="0,72,0,0" Style="{StaticResource ProgramList}" ItemTemplate="{StaticResource RunningRow}" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Запущенные пользовательские приложения"/>
+   <ListBox x:Name="LaunchList" Margin="0,72,0,0" Style="{StaticResource ProgramList}" Visibility="Collapsed" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Добавленные программы для запуска"/>
+   <TextBlock x:Name="EmptyPrograms" Margin="19,96,19,24" TextWrapping="Wrap" Foreground="{DynamicResource MutedText}" IsHitTestVisible="False"/>
   </Grid>
   <StackPanel Visibility="Collapsed" Orientation="Horizontal">
    <local:SectionButton x:Name="RunningMode" Style="{StaticResource ProgramModeTab}" Content="Запущенные" Click="RunningClick" Margin="0,0,26,0" AutomationProperties.Name="Запущенные приложения"/>
