@@ -35,6 +35,8 @@ internal sealed class InterfaceSettings : IDisposable
         }
         catch (System.Security.SecurityException) { TextScale = 1; }
         foreach (int size in Sizes) app.Resources[$"Font{size}"] = size * 0.625 * TextScale;
+        app.Resources["HeadingFont26"] = 26 * TextScale;
+        app.Resources["BrandFont36"] = 36 * TextScale;
         app.Resources["BadgeSize"] = 34 * 0.625 * TextScale;
         foreach (var pair in original) app.Resources[pair.Key] = pair.Value;
         if (SystemParameters.HighContrast)

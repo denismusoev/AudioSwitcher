@@ -19,6 +19,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--selected-dpi")) return SelectedFixChecks.RunDpi();
+        if (args.Contains("--selection-navigation")) return SelectedFixChecks.RunSelectionNavigation();
+        if (args.Contains("--selected-fixes")) return SelectedFixChecks.Run();
         if (args.Contains("--targeted-visual")) return FixedDesignChecks.RunTargetedVisual();
         if (args.Contains("--fixed-design")) return FixedDesignChecks.Run();
         int passed = 0, failed = 0, skipped = 0;

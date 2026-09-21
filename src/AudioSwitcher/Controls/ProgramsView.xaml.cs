@@ -22,10 +22,14 @@ public partial class ProgramsView : UserControl
     private readonly LaunchCatalogStore store;
     private LaunchCatalogLoad catalog = new(new(1, []), true, null);
     private CancellationTokenSource? lifetime;
-    private bool refreshing, operating, editorOpen;
+    private bool operating, editorOpen;
+    private int lifetimeGeneration;
+    private int refreshingGeneration = -1;
     private string snapshotSignature = "";
     private RunningProgram? currentProgram;
     private LaunchEntry? currentEntry;
+    private string? returnProgramKey;
+    private Guid? returnEntryId;
     public LaunchEntryDialog? Editor { get; private set; }
     public NavigationState Navigation { get; } = new();
     public bool IsBusy => operating || Editor?.IsSaving == true;
@@ -54,38 +58,47 @@ public partial class ProgramsView : UserControl
         if (lifetime == null)
         {
             lifetime = new();
+            lifetimeGeneration++;
             catalog = store.Load(); ShowCatalog(); UpdateLists();
             if (catalog.Error != null && Navigation.LaunchList) Notify("Каталог недоступен. Можно сохранить копию и сбросить", catalog.Error);
             _ = RefreshAsync();
         }
-        if (focus) RestoreFocus();
+        if (focus) FocusFirstItem();
     }
     public void Leave() { lifetime?.Cancel(); lifetime?.Dispose(); lifetime = null; }
     public async Task RefreshAsync(bool quiet = false)
     {
-        if (Navigation.Section != AppSection.Programs || Navigation.LaunchList || Editing || (InPanel && currentProgram == null) || IsBusy || refreshing || lifetime == null) return;
-        var active = lifetime; var token = active.Token; refreshing = true;
+        int generation = lifetimeGeneration;
+        if (Navigation.Section != AppSection.Programs || Navigation.LaunchList || Editing || (InPanel && currentProgram == null) || IsBusy || lifetime == null || !CanStartRefresh(generation, refreshingGeneration)) return;
+        var active = lifetime; var token = active.Token; refreshingGeneration = generation;
         if (!quiet) Notify("Загрузка приложений…");
         try
         {
             var snapshot = await windows.GetProgramsAsync(token);
-            if (active != lifetime || Navigation.Section != AppSection.Programs || Navigation.LaunchList || Editing || IsBusy) return;
+            if (active != lifetime || generation != lifetimeGeneration || Navigation.Section != AppSection.Programs || Navigation.LaunchList || Editing || IsBusy) return;
             ApplyRunningSnapshot(snapshot, quiet);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (active == lifetime) Notify("Не удалось загрузить приложения", ex.Message); }
-        finally { refreshing = false; }
+        finally { if (refreshingGeneration == generation) refreshingGeneration = -1; }
     }
+    private static bool CanStartRefresh(int generation, int refreshingGeneration) => generation != refreshingGeneration;
     private void ApplyRunningSnapshot(IReadOnlyList<RunningProgram> snapshot, bool quiet)
     {
         string signature = string.Join("|", snapshot.Select(p => $"{p.Key}:{p.Name}:{string.Join(';', p.Windows.Select(w => $"{w.Handle}:{w.Title}:{w.Screen}:{w.NotResponding}"))}"));
         if (signature != snapshotSignature)
         {
-            var selected = (RunningList.SelectedItem as RunningProgram)?.Key;
+            bool listActive = Navigation.SectionActive && !InPanel;
+            bool restoreFocus = listActive && RunningList.IsKeyboardFocusWithin;
+            var selected = listActive ? (RunningList.SelectedItem as RunningProgram)?.Key : null;
             RunningList.ItemsSource = snapshot;
-            RunningList.SelectedItem = snapshot.FirstOrDefault(p => p.Key == selected) ?? snapshot.FirstOrDefault();
+            RunningList.SelectedItem = listActive ? snapshot.FirstOrDefault(p => p.Key == selected) ?? snapshot.FirstOrDefault() : null;
             snapshotSignature = signature;
-            if (!InPanel) ScrollSelection(RunningList);
+            if (!InPanel)
+            {
+                if (restoreFocus) FocusSelection(RunningList);
+                else ScrollSelection(RunningList);
+            }
         }
         if (InPanel && currentProgram != null)
         {
@@ -106,9 +119,11 @@ public partial class ProgramsView : UserControl
                 var oldWindows = ProgramActions.ItemsSource?.Cast<WindowTarget>().ToArray() ?? [];
                 if (!oldWindows.SequenceEqual(latest.Windows))
                 {
+                    bool restoreFocus = ProgramActions.IsKeyboardFocusWithin;
                     ProgramActions.ItemsSource = latest.Windows;
                     ProgramActions.SelectedItem = latest.Windows.FirstOrDefault(w => w.Handle == selected) ?? latest.Windows.FirstOrDefault();
-                    ScrollSelection(ProgramActions);
+                    if (restoreFocus) FocusSelection(ProgramActions);
+                    else ScrollSelection(ProgramActions);
                 }
                 PanelDescription.Text = latest.Name;
             }
@@ -127,9 +142,11 @@ public partial class ProgramsView : UserControl
     }
     private void ShowCatalog(Guid? preferred = null)
     {
-        Guid? selected = preferred ?? (LaunchList.SelectedItem as CatalogRow)?.Entry.Id;
+        bool listActive = Navigation.SectionActive && !InPanel;
+        Guid? selected = preferred ?? (listActive ? (LaunchList.SelectedItem as CatalogRow)?.Entry.Id : null);
         var rows = catalog.Catalog.Entries.Select(e => new CatalogRow(e)).ToArray();
-        LaunchList.ItemsSource = rows; LaunchList.SelectedItem = rows.FirstOrDefault(r => r.Entry.Id == selected) ?? rows.FirstOrDefault();
+        LaunchList.ItemsSource = rows;
+        LaunchList.SelectedItem = listActive ? rows.FirstOrDefault(r => r.Entry.Id == selected) ?? rows.FirstOrDefault() : null;
         AddProgram.IsEnabled = catalog.CanSave;
         ResetCatalog.Visibility = catalog.CanSave ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -161,13 +178,16 @@ public partial class ProgramsView : UserControl
     public void SelectMode(bool launch, bool force = false)
     {
         if (InPanel || IsBusy || (!force && Navigation.LaunchList == launch)) return;
+        ClearListSelection();
+        ClearReturnSelection();
         Navigation.LaunchList = launch; UpdateLists();
         if (launch)
         {
-            catalog = store.Load(); ShowCatalog(); UpdateEmpty(); LaunchList.Focus();
+            catalog = store.Load(); ShowCatalog(); UpdateEmpty();
             Notify(catalog.Error == null ? "Готово" : "Каталог недоступен. Можно сохранить копию и сбросить", catalog.Error);
         }
-        else { RunningList.Focus(); _ = RefreshAsync(); }
+        else _ = RefreshAsync();
+        if (Navigation.SectionActive) FocusFirstItem();
     }
     public void Move(int direction)
     {
@@ -193,17 +213,52 @@ public partial class ProgramsView : UserControl
         if (list.SelectedItem != null && list.ItemContainerGenerator.ContainerFromItem(list.SelectedItem) is ListBoxItem item) item.Focus();
         else list.Focus();
     }
+    private ListBox CurrentList => Navigation.LaunchList ? LaunchList : RunningList;
+    private void FocusFirstItem()
+    {
+        var list = CurrentList;
+        list.SelectedIndex = list.Items.Count > 0 ? 0 : -1;
+        FocusSelection(list);
+    }
+    private void ClearListSelection()
+    {
+        RunningList.SelectedIndex = -1;
+        LaunchList.SelectedIndex = -1;
+    }
+    private void ClearReturnSelection() => (returnProgramKey, returnEntryId) = (null, null);
+    private void RememberAndClearListSelection()
+    {
+        returnProgramKey = (RunningList.SelectedItem as RunningProgram)?.Key;
+        returnEntryId = (LaunchList.SelectedItem as CatalogRow)?.Entry.Id;
+        ClearListSelection();
+    }
+    private void RestoreListSelection()
+    {
+        if (Navigation.LaunchList)
+            LaunchList.SelectedItem = LaunchList.Items.Cast<CatalogRow>().FirstOrDefault(row => row.Entry.Id == returnEntryId) ?? LaunchList.Items.Cast<CatalogRow>().FirstOrDefault();
+        else
+            RunningList.SelectedItem = RunningList.Items.Cast<RunningProgram>().FirstOrDefault(program => program.Key == returnProgramKey) ?? RunningList.Items.Cast<RunningProgram>().FirstOrDefault();
+        ClearReturnSelection();
+        FocusSelection(CurrentList);
+    }
+    public void ExitCurrentPage()
+    {
+        if (InPanel) ProgramActions.SelectedIndex = -1;
+        else ClearListSelection();
+        ClearReturnSelection();
+    }
     public void RestoreFocus() => FocusSelection(InPanel ? ProgramActions : Navigation.LaunchList ? LaunchList : RunningList);
     public bool Back()
     {
         if (IsBusy) return true;
         if (Editing) { if (Editor?.EndFieldInput() != true) CloseEditor(); return true; }
         if (!Navigation.Back()) return false;
+        ProgramActions.SelectedIndex = -1;
         if (Navigation.Panel == ProgramPanel.Actions) ShowActions();
         else
         {
             ClosePanel(); ListsSurface.Visibility = Visibility.Visible; ListsSurface.IsEnabled = ListsSurface.IsHitTestVisible = true; PanelSurface.Visibility = Visibility.Collapsed;
-            FocusSelection(Navigation.LaunchList ? LaunchList : RunningList); UpdateEmpty(); ContextChanged?.Invoke();
+            RestoreListSelection(); UpdateEmpty(); ContextChanged?.Invoke();
         }
         return true;
     }
@@ -263,8 +318,11 @@ public partial class ProgramsView : UserControl
     }
     private void ReturnToList(bool focus = true)
     {
+        ProgramActions.SelectedIndex = -1;
         ClosePanel(); Navigation.Panel = ProgramPanel.List; ListsSurface.Visibility = Visibility.Visible; ListsSurface.IsEnabled = ListsSurface.IsHitTestVisible = true; PanelSurface.Visibility = Visibility.Collapsed;
-        UpdateEmpty(); ContextChanged?.Invoke(); if (focus) FocusSelection(Navigation.LaunchList ? LaunchList : RunningList);
+        UpdateEmpty(); ContextChanged?.Invoke();
+        if (focus) RestoreListSelection();
+        else ClearReturnSelection();
     }
     public async Task CatalogAsync()
     {
@@ -314,6 +372,8 @@ public partial class ProgramsView : UserControl
     }
     private void ShowPanel(ProgramPanel panel, string title, string description, System.Collections.IEnumerable choices)
     {
+        if (!InPanel) RememberAndClearListSelection();
+        else ProgramActions.SelectedIndex = -1;
         Navigation.Panel = panel; PanelTitle.Text = title; PanelDescription.Text = description;
         bool confirmation = panel is ProgramPanel.ConfirmDelete or ProgramPanel.ConfirmReset;
         PanelSurface.Background = confirmation ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(185, 8, 10, 13)) : System.Windows.Media.Brushes.Transparent;
@@ -373,6 +433,8 @@ public partial class ProgramsView : UserControl
     private async Task EditEntry(LaunchEntry? entry)
     {
         if (IsBusy || !catalog.CanSave) return;
+        if (!InPanel) RememberAndClearListSelection();
+        else ProgramActions.SelectedIndex = -1;
         editorOpen = true;
         ListsSurface.Visibility = PanelSurface.Visibility = Visibility.Collapsed;
         Editor = new LaunchEntryDialog(entry, async nextEntry => {

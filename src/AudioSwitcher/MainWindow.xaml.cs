@@ -23,9 +23,11 @@ public partial class MainWindow : Window
     private readonly ApplicationSettingsStore settingsStore;
     private readonly InterfaceSettings interfaceSettings;
     private NavigationState navigation => Programs.Navigation;
-    private bool busy, padArmed, pickingDisplay;
+    private bool busy, padArmed, pickingDisplay, controlRefreshing, closed;
     private OverlayMode overlay;
+    private OverlayMode overlayReturnMode;
     private UIElement? overlayFocusOrigin;
+    private UIElement? overlayReturnFocus;
     private string? errorDetails;
     private Point pointerStart;
     private bool dragAllowed, dragged;
@@ -48,31 +50,48 @@ public partial class MainWindow : Window
         {
             FitToWorkArea();
             navigation.Section = AppSection.Control;
-            RefreshControl();
+            _ = RefreshControlAsync();
             UpdateChrome();
             FocusSectionTab();
             Activate();
             padTimer.Start();
             refreshTimer.Start();
         };
-        Closed += (_, _) => { padTimer.Stop(); refreshTimer.Stop(); Programs.Leave(); interfaceSettings.Dispose(); };
+        Closed += (_, _) => { closed = true; padTimer.Stop(); refreshTimer.Stop(); Programs.Leave(); interfaceSettings.Dispose(); };
         padTimer.Tick += (_, _) => PollPad();
-        refreshTimer.Tick += (_, _) => { if (!busy && overlay == OverlayMode.None) RefreshCurrent(); };
+        refreshTimer.Tick += async (_, _) => { if (!busy && overlay == OverlayMode.None) await RefreshCurrentAsync(); };
     }
 
-    private void UpdateAppearance() => UpdateChrome();
+    private void UpdateAppearance()
+    {
+        bool compact = ActualWidth > 0 && ActualWidth < 1200;
+        WindowFrame.Padding = compact ? new Thickness(32, 32, 32, 76) : new Thickness(80, 60, 110, 76);
+        SectionColumn.Width = new GridLength(compact ? 240 : 364);
+        GapColumn.Width = new GridLength(compact ? 32 : 63);
+        FooterSectionColumn.Width = new GridLength(compact ? 240 : 364);
+        FooterGapColumn.Width = new GridLength(compact ? 32 : 63);
+        SectionStack.Margin = compact ? new Thickness(0, 8, 0, 0) : new Thickness(53, 8, 0, 0);
+        foreach (var tab in new[] { ControlTab, RunningTab, LaunchTab }) tab.Width = compact ? 240 : 311;
+        FooterSurface.Margin = compact ? new Thickness(32, 0, 32, 16) : new Thickness(80, 0, 110, 28);
+        SettingsSurface.Width = compact ? double.NaN : 884;
+        SettingsSurface.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        SettingsSurface.Margin = compact ? new Thickness(304, 96, 32, 76) : new Thickness(506, 135, 0, 94);
+        DevicePickerOverlay.Width = Math.Min(450, Math.Max(280, ActualWidth - 64));
+        DevicePickerOverlay.Margin = compact ? new Thickness(0, 32, 32, 76) : new Thickness(0, 40, 40, 94);
+        UpdateChrome();
+    }
 
     private void FitToWorkArea()
     {
         var handle = new WindowInteropHelper(this).Handle;
         var area = WindowPlacement.PrimaryWorkArea();
-        var scale = WindowPlacement.Scale(handle);
+        var scale = area.Scale;
         double availableWidth = area.Width / scale * 0.88;
         double availableHeight = area.Height / scale * 0.88;
         Width = Math.Floor(Math.Min(1500, Math.Min(availableWidth, availableHeight * 16 / 9)));
         Height = Math.Floor(Width * 9 / 16);
         WindowState = WindowState.Normal;
-        WindowPlacement.Center(handle);
+        WindowPlacement.PlaceCentered(handle, area, Width, Height);
     }
 
     private void SetStatus(string text, string? details = null)
@@ -82,18 +101,22 @@ public partial class MainWindow : Window
         Status.SetResourceReference(TextBlock.ForegroundProperty, details == null ? "MutedText" : "ErrorText");
     }
 
-    private void RefreshCurrent()
+    private async Task RefreshCurrentAsync()
     {
-        if (navigation.Section == AppSection.Control) RefreshControl(quiet: true);
-        else if (navigation.Section == AppSection.Running) _ = Programs.RefreshAsync(quiet: true);
+        if (navigation.Section == AppSection.Control) await RefreshControlAsync(quiet: true);
+        else if (navigation.Section == AppSection.Running) await Programs.RefreshAsync(quiet: true);
     }
 
-    private void RefreshControl(bool quiet = false)
+    private async Task RefreshControlAsync(bool quiet = false)
     {
+        if (controlRefreshing || closed) return;
+        controlRefreshing = true;
         try
         {
-            var audioItems = audio.GetDevices();
-            var displayItems = display.GetDevices();
+            var snapshot = await Task.Run(() => (Audio: audio.GetDevices(), Displays: display.GetDevices()));
+            if (closed || navigation.Section != AppSection.Control) return;
+            var audioItems = snapshot.Audio;
+            var displayItems = snapshot.Displays;
             var activeAudio = audioItems.FirstOrDefault(x => x.IsDefault) ?? audioItems.FirstOrDefault();
             var activeDisplay = displayItems.FirstOrDefault(x => x.IsDefault) ?? displayItems.FirstOrDefault();
             AudioSummary.Text = activeAudio?.DisplayName ?? "Нет доступных устройств";
@@ -103,6 +126,7 @@ public partial class MainWindow : Window
             if (!quiet) SetStatus("Готово");
         }
         catch (Exception ex) { SetStatus("Не удалось обновить устройства", ex.Message); }
+        finally { controlRefreshing = false; }
     }
 
     private void SwitchSection(AppSection section)
@@ -114,7 +138,7 @@ public partial class MainWindow : Window
         navigation.LaunchList = section == AppSection.Launch;
         SetPrimarySurfaceVisibility(true);
         gate.RequireRelease();
-        if (section == AppSection.Control) RefreshControl();
+        if (section == AppSection.Control) _ = RefreshControlAsync();
         else
         {
             Programs.SelectMode(section == AppSection.Launch, force: true);
@@ -129,7 +153,7 @@ public partial class MainWindow : Window
         Programs.Leave();
         SetPrimarySurfaceVisibility(true);
         gate.RequireRelease();
-        if (navigation.Section == AppSection.Control) RefreshControl();
+        if (navigation.Section == AppSection.Control) _ = RefreshControlAsync();
         else
         {
             Programs.SelectMode(navigation.Section == AppSection.Launch, force: true);
@@ -151,6 +175,7 @@ public partial class MainWindow : Window
     private bool LeaveSection(PadAction action = PadAction.Left)
     {
         if (navigation.Navigate(action) != NavigationTransition.LeftSection) return false;
+        Programs.ExitCurrentPage();
         FocusSectionTab();
         gate.RequireRelease();
         UpdateChrome();
@@ -236,12 +261,18 @@ public partial class MainWindow : Window
     private void ShowOverlay(OverlayMode mode)
     {
         if (overlay == OverlayMode.None) overlayFocusOrigin = Keyboard.FocusedElement as UIElement;
+        else if (mode == OverlayMode.Error && overlay != OverlayMode.Error)
+        {
+            overlayReturnMode = overlay;
+            overlayReturnFocus = Keyboard.FocusedElement as UIElement;
+        }
         overlay = mode;
         OverlayShade.Visibility = Visibility.Visible;
         DevicePickerOverlay.Visibility = mode == OverlayMode.Devices ? Visibility.Visible : Visibility.Collapsed;
         SettingsSurface.Visibility = mode == OverlayMode.Settings ? Visibility.Visible : Visibility.Collapsed;
         DetailsSurface.Visibility = mode == OverlayMode.Error ? Visibility.Visible : Visibility.Collapsed;
         if (mode == OverlayMode.Settings) SetPrimarySurfaceVisibility(false);
+        WindowFrame.IsEnabled = false;
         gate.RequireRelease();
         UpdateChrome();
     }
@@ -249,10 +280,29 @@ public partial class MainWindow : Window
     private bool CloseDetails()
     {
         if (overlay == OverlayMode.None) return false;
+        if (overlay == OverlayMode.Error && overlayReturnMode != OverlayMode.None)
+        {
+            overlay = overlayReturnMode;
+            overlayReturnMode = OverlayMode.None;
+            DevicePickerOverlay.Visibility = overlay == OverlayMode.Devices ? Visibility.Visible : Visibility.Collapsed;
+            SettingsSurface.Visibility = overlay == OverlayMode.Settings ? Visibility.Visible : Visibility.Collapsed;
+            DetailsSurface.Visibility = Visibility.Collapsed;
+            var returnFocus = overlayReturnFocus;
+            overlayReturnFocus = null;
+            if (returnFocus?.IsVisible == true && returnFocus.IsEnabled) returnFocus.Focus();
+            else if (overlay == OverlayMode.Devices) FocusSelection(Devices);
+            else SettingsToggle.Focus();
+            gate.RequireRelease();
+            UpdateChrome();
+            return true;
+        }
         overlay = OverlayMode.None;
+        overlayReturnMode = OverlayMode.None;
+        overlayReturnFocus = null;
         OverlayShade.Visibility = Visibility.Collapsed;
         DevicePickerOverlay.Visibility = SettingsSurface.Visibility = DetailsSurface.Visibility = Visibility.Collapsed;
         SetPrimarySurfaceVisibility(true);
+        WindowFrame.IsEnabled = true;
         var focusOrigin = overlayFocusOrigin;
         overlayFocusOrigin = null;
         if (focusOrigin?.IsVisible == true && focusOrigin.IsEnabled) focusOrigin.Focus();
@@ -280,7 +330,7 @@ public partial class MainWindow : Window
         {
             if (pickingDisplay) display.SetPrimaryDisplay(selected.Id); else audio.SetDefault(selected.Id);
             CloseDetails();
-            RefreshControl(quiet: true);
+            await RefreshControlAsync(quiet: true);
             if (pickingDisplay)
             {
                 await Dispatcher.Yield(DispatcherPriority.ContextIdle);
