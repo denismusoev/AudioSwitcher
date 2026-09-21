@@ -320,6 +320,14 @@ internal static class FixedDesignChecks
                         var lineColor = ((SolidColorBrush)app.FindResource("Line")).Color;
                         Require(VisualBorders((DependencyObject)window.FindName("ControlSurface")).Count(border => border.ActualHeight is > 0 and <= 1.5 && border.Background is SolidColorBrush brush && brush.Color == lineColor) == 1, "Expected exactly one visible row separator");
                     });
+                    Call(window, "Execute", PadAction.Confirm);
+                    var displayInvoker = (Button)window.FindName("DisplayControlCard");
+                    displayInvoker.Focus();
+                    Call(window, "Execute", PadAction.Settings);
+                    Call(window, "Execute", PadAction.Close);
+                    Check("Closing an overlay restores focus to its invoking control", () =>
+                        Require(displayInvoker.IsKeyboardFocused, "Overlay returned focus to Audio instead of the invoking Display card"));
+                    Call(window, "Execute", PadAction.Close);
                     Capture(window, "tv-implemented-control.png");
 
                     Call(window, "SwitchSection", AppSection.Running);
@@ -330,6 +338,13 @@ internal static class FixedDesignChecks
                     {
                         Require(programs.IsVisible && !programs.Navigation.LaunchList, "Running root not active");
                         Require(!((FrameworkElement)programs.FindName("RunningMode")).IsVisible && !((FrameworkElement)programs.FindName("LaunchMode")).IsVisible, "Nested tabs remain visible");
+                    });
+                    Check("Root section hints expose only actions that work", () =>
+                    {
+                        Require(((Button)window.FindName("PrimaryCommand")).Content?.ToString() == "открыть", "A does not describe entering the root section");
+                        Require(!((Button)window.FindName("SecondaryCommand")).IsVisible, "X is shown before the section is active");
+                        Require(!((Button)window.FindName("CreateCommand")).IsVisible, "Y is shown before the section is active");
+                        Require(((Button)window.FindName("BackCommand")).Content?.ToString() == "закрыть", "B says Back even though it closes the app");
                     });
                     Capture(window, "tv-implemented-running.png");
                     programs.Leave();
@@ -360,6 +375,28 @@ internal static class FixedDesignChecks
                             Require(actions.Items.Count == 3, $"Expected two windows plus close-all, got {actions.Items.Count}");
                             Require(actions.Items.Cast<object>().Any(item => item.GetType().GetProperty("DisplayName")?.GetValue(item)?.ToString() == "Закрыть все окна"), "Close-all choice missing");
                         });
+                        var closeChoices = (ListBox)programs.FindName("ProgramActions");
+                        closeChoices.SelectedIndex = 1;
+                        closeChoices.UpdateLayout();
+                        ((ListBoxItem)closeChoices.ItemContainerGenerator.ContainerFromIndex(1)).Focus();
+                        var refreshed = sample with
+                        {
+                            Windows =
+                            [
+                                new WindowTarget(default, (nint)103, "Третье окно", "Экран 3", false),
+                                .. sample.Windows
+                            ]
+                        };
+                        Call(programs, "ApplyRunningSnapshot", new[] { refreshed }, true);
+                        window.UpdateLayout();
+                        Check("Refreshing close choices preserves the selected window and focus", () =>
+                        {
+                            var selected = closeChoices.SelectedItem ?? throw new Exception("Close choice selection was lost");
+                            var selectedWindow = selected.GetType().GetProperty("Window")!.GetValue(selected) as WindowTarget;
+                            Require(selectedWindow?.Handle == (nint)102, "Refresh moved selection to a different window");
+                            var selectedRow = (ListBoxItem)closeChoices.ItemContainerGenerator.ContainerFromItem(selected);
+                            Require(selectedRow.IsKeyboardFocused, "Refresh preserved data selection but moved keyboard focus");
+                        });
                         Capture(window, "tv-implemented-close-picker.png");
                         programs.Back();
                     }
@@ -368,6 +405,12 @@ internal static class FixedDesignChecks
                     await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                     window.UpdateLayout();
                     Check("Launch catalogue is its own root section", () => Require(programs.IsVisible && programs.Navigation.LaunchList && ((ListBox)programs.FindName("LaunchList")).IsVisible, "Launch root not active"));
+                    Check("Launch root hides list-only commands", () =>
+                    {
+                        Require(((Button)window.FindName("PrimaryCommand")).Content?.ToString() == "открыть", "A does not describe entering Launch");
+                        Require(!((Button)window.FindName("SecondaryCommand")).IsVisible, "Edit is shown before the Launch list is active");
+                        Require(!((Button)window.FindName("CreateCommand")).IsVisible, "Add is shown before the Launch list is active");
+                    });
                     Capture(window, "tv-implemented-launch.png");
 
                     Call(window, "Execute", PadAction.Settings);
@@ -403,10 +446,23 @@ internal static class FixedDesignChecks
                     Call(window, "Execute", PadAction.Close);
 
                     Call(window, "SwitchSection", AppSection.Launch);
+                    Call(window, "Execute", PadAction.Confirm);
+                    Check("Active Launch list exposes launch edit add and back", () =>
+                    {
+                        Require(((Button)window.FindName("PrimaryCommand")).Content?.ToString() == "запустить", "A does not describe launching the selected entry");
+                        Require(((Button)window.FindName("SecondaryCommand")).IsVisible, "Edit is hidden in the active Launch list");
+                        Require(((Button)window.FindName("CreateCommand")).IsVisible, "Add is hidden in the active Launch list");
+                        Require(((Button)window.FindName("BackCommand")).Content?.ToString() == "назад", "B does not describe leaving the active Launch list");
+                    });
                     await programs.CreateAsync();
                     window.UpdateLayout();
                     Check("Y route opens the catalogue editor", () => Require(programs.Editing && programs.Editor != null && programs.Editor.IsVisible, "Editor did not open"));
-                    Check("Editor exposes gamepad and mouse save, delete and back actions", () => Require(((Button)window.FindName("CreateCommand")).IsVisible && ((Button)window.FindName("SecondaryCommand")).IsVisible && ((Button)window.FindName("BackCommand")).IsVisible, "Editor commands missing"));
+                    Check("New-entry editor hides delete but keeps save and back", () =>
+                    {
+                        Require(((Button)window.FindName("CreateCommand")).IsVisible, "Save command is hidden in the editor");
+                        Require(!((Button)window.FindName("SecondaryCommand")).IsVisible, "Delete is shown for an entry that does not exist yet");
+                        Require(((Button)window.FindName("BackCommand")).IsVisible, "Back command is hidden in the editor");
+                    });
                     Call(window, "Execute", PadAction.Right);
                     Call(window, "Execute", PadAction.Confirm);
                     Check("Editor reaches Arguments with horizontal controller navigation", () => Require(Keyboard.FocusedElement == programs.Editor!.FindName("EntryArguments"), "Right then A did not focus Arguments"));

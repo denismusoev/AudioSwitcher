@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private NavigationState navigation => Programs.Navigation;
     private bool busy, padArmed, pickingDisplay;
     private OverlayMode overlay;
+    private UIElement? overlayFocusOrigin;
     private string? errorDetails;
     private Point pointerStart;
     private bool dragAllowed, dragged;
@@ -178,13 +179,14 @@ public partial class MainWindow : Window
         ControlTab.IsEnabled = RunningTab.IsEnabled = LaunchTab.IsEnabled = true;
         bool editing = Programs.Editing;
         bool panel = Programs.InPanel;
-        PrimaryCommand.Content = overlay == OverlayMode.Settings ? "переключить" : overlay == OverlayMode.Error ? "закрыть" : editing ? "поле" : navigation.Section == AppSection.Running && !panel ? "на экран" : navigation.Section == AppSection.Launch && !panel ? "запустить" : "выбрать";
+        bool sectionActive = navigation.SectionActive;
+        PrimaryCommand.Content = overlay == OverlayMode.Settings ? "переключить" : overlay == OverlayMode.Error ? "закрыть" : !sectionActive ? "открыть" : editing ? "поле" : navigation.Section == AppSection.Running && !panel ? "на экран" : navigation.Section == AppSection.Launch && !panel ? "запустить" : "выбрать";
         SecondaryCommand.Content = editing ? "удалить" : navigation.Section == AppSection.Running ? "закрыть" : "изменить";
         CreateCommand.Content = editing ? "сохранить" : "добавить";
-        SecondaryCommand.Visibility = overlay == OverlayMode.None && !panel && navigation.Section != AppSection.Control || editing ? Visibility.Visible : Visibility.Collapsed;
-        CreateCommand.Visibility = overlay == OverlayMode.None && navigation.Section == AppSection.Launch ? Visibility.Visible : Visibility.Collapsed;
+        SecondaryCommand.Visibility = overlay == OverlayMode.None && sectionActive && (editing ? Programs.CanDeleteEditing : !panel && navigation.Section != AppSection.Control) ? Visibility.Visible : Visibility.Collapsed;
+        CreateCommand.Visibility = overlay == OverlayMode.None && sectionActive && (editing || !panel && navigation.Section == AppSection.Launch) ? Visibility.Visible : Visibility.Collapsed;
         SettingsCommand.Visibility = overlay == OverlayMode.None && !panel ? Visibility.Visible : Visibility.Collapsed;
-        BackCommand.Content = overlay == OverlayMode.None && navigation.Section == AppSection.Control ? "закрыть" : "назад";
+        BackCommand.Content = overlay == OverlayMode.None && !sectionActive ? "закрыть" : "назад";
     }
 
     private void OpenDevicePicker(bool displays)
@@ -233,6 +235,7 @@ public partial class MainWindow : Window
 
     private void ShowOverlay(OverlayMode mode)
     {
+        if (overlay == OverlayMode.None) overlayFocusOrigin = Keyboard.FocusedElement as UIElement;
         overlay = mode;
         OverlayShade.Visibility = Visibility.Visible;
         DevicePickerOverlay.Visibility = mode == OverlayMode.Devices ? Visibility.Visible : Visibility.Collapsed;
@@ -250,7 +253,10 @@ public partial class MainWindow : Window
         OverlayShade.Visibility = Visibility.Collapsed;
         DevicePickerOverlay.Visibility = SettingsSurface.Visibility = DetailsSurface.Visibility = Visibility.Collapsed;
         SetPrimarySurfaceVisibility(true);
-        RestoreFocus();
+        var focusOrigin = overlayFocusOrigin;
+        overlayFocusOrigin = null;
+        if (focusOrigin?.IsVisible == true && focusOrigin.IsEnabled) focusOrigin.Focus();
+        else RestoreFocus();
         gate.RequireRelease();
         UpdateChrome();
         return true;

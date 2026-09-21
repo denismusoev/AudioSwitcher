@@ -30,6 +30,7 @@ public partial class ProgramsView : UserControl
     public NavigationState Navigation { get; } = new();
     public bool IsBusy => operating || Editor?.IsSaving == true;
     public bool Editing => editorOpen;
+    public bool CanDeleteEditing => Editing && currentEntry != null && Editor?.IsSaving != true;
     public string DetailsText => PanelTitle.Text + "\n\n" + PanelDescription.Text + (PanelFeedback.Visibility == Visibility.Visible ? "\n\n" + PanelFeedback.Text : "");
     public bool InPanel => editorOpen || Navigation.Panel != ProgramPanel.List;
     public string ActionHint => IsBusy ? "Подождите" : Editing ? "Сохранить" : InPanel ? "Выбрать" : "Действия";
@@ -290,10 +291,25 @@ public partial class ProgramsView : UserControl
     }
     private void ShowCloseChoices(RunningProgram program)
     {
+        var selected = ProgramActions.SelectedItem as Choice;
+        bool restoreKeyboardFocus = ProgramActions.IsKeyboardFocusWithin;
         currentProgram = program;
         var choices = program.Windows.Select(window => new Choice("close-window", window.DisplayName, window.DisplayDetails, window))
             .Append(new Choice("close-all", "Закрыть все окна", $"Окна: {program.Windows.Count}"))
             .ToArray();
+        if (Navigation.Panel == ProgramPanel.CloseWindows)
+        {
+            PanelTitle.Text = "Какое окно закрыть?";
+            PanelDescription.Text = program.Name;
+            ProgramActions.ItemsSource = choices;
+            ProgramActions.SelectedItem = selected?.Window == null
+                ? choices.FirstOrDefault(choice => choice.Id == selected?.Id)
+                : choices.FirstOrDefault(choice => choice.Window?.Handle == selected.Window.Handle);
+            ProgramActions.SelectedItem ??= choices.FirstOrDefault();
+            if (restoreKeyboardFocus) FocusSelection(ProgramActions);
+            else ScrollSelection(ProgramActions);
+            return;
+        }
         ShowPanel(ProgramPanel.CloseWindows, "Какое окно закрыть?", program.Name, choices);
     }
     private void ShowPanel(ProgramPanel panel, string title, string description, System.Collections.IEnumerable choices)
