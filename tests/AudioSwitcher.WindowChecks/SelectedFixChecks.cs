@@ -97,16 +97,32 @@ internal static class SelectedFixChecks
     {
         try
         {
-            var area = new WindowPlacement.WorkArea(0, 0, 2560, 1440, 1.5);
             var method = typeof(WindowPlacement).GetMethod("CenteredBounds", BindingFlags.Static | BindingFlags.NonPublic);
             Require(method != null, "Window placement has no target-DPI physical bounds calculation");
-            object bounds = method!.Invoke(null, [area, 1500d, 844d])!;
-            int x = (int)bounds.GetType().GetProperty("X")!.GetValue(bounds)!;
-            int y = (int)bounds.GetType().GetProperty("Y")!.GetValue(bounds)!;
-            int width = (int)bounds.GetType().GetProperty("Width")!.GetValue(bounds)!;
-            int height = (int)bounds.GetType().GetProperty("Height")!.GetValue(bounds)!;
-            Require((x, y, width, height) == (155, 87, 2250, 1266), $"Got {x},{y} {width}x{height}");
-            Console.WriteLine("PASS Mixed-DPI centering uses target physical bounds");
+
+            var cases = new[]
+            {
+                ("2K 100%", new WindowPlacement.WorkArea(0, 0, 2560, 1440, 1.0), (530, 298, 1500, 844)),
+                ("4K 150%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.5), (795, 447, 2250, 1266)),
+                ("4K TV 100%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.0), (1170, 658, 1500, 844)),
+                ("4K TV 150%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.5), (795, 447, 2250, 1266)),
+                ("4K TV 200%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 2.0), (420, 236, 3000, 1688)),
+                ("4K TV 300%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 3.0), (231, 130, 3378, 1900)),
+                ("left-side 4K 150%", new WindowPlacement.WorkArea(-3840, 0, 3840, 2160, 1.5), (-3045, 447, 2250, 1266))
+            };
+
+            foreach (var (name, area, expected) in cases)
+            {
+                object bounds = method!.Invoke(null, [area, 1500d, 844d])!;
+                int x = (int)bounds.GetType().GetProperty("X")!.GetValue(bounds)!;
+                int y = (int)bounds.GetType().GetProperty("Y")!.GetValue(bounds)!;
+                int width = (int)bounds.GetType().GetProperty("Width")!.GetValue(bounds)!;
+                int height = (int)bounds.GetType().GetProperty("Height")!.GetValue(bounds)!;
+                Require((x, y, width, height) == expected,
+                    $"{name}: got {x},{y} {width}x{height}; expected {expected.Item1},{expected.Item2} {expected.Item3}x{expected.Item4}");
+            }
+
+            Console.WriteLine("PASS Mixed-DPI sizing and centering use target monitor bounds");
             Console.WriteLine("Passed: 1, Failed: 0, Skipped: 0");
             return 0;
         }

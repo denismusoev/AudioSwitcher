@@ -13,6 +13,12 @@ namespace AudioSwitcher;
 
 public partial class MainWindow : Window
 {
+    private const double PreferredWindowWidth = 1500;
+    private const double PreferredWindowHeight = 844;
+    private const int WmSettingChange = 0x001A;
+    private const int WmDisplayChange = 0x007E;
+    private const int WmDpiChanged = 0x02E0;
+
     private enum OverlayMode { None, Devices, Settings, Error }
 
     private readonly AudioService audio = new();
@@ -31,6 +37,9 @@ public partial class MainWindow : Window
     private string? errorDetails;
     private Point pointerStart;
     private bool dragAllowed, dragged;
+    private HwndSource? windowSource;
+    private IntPtr placementMonitor;
+    private bool placementReady, placementPending, forcePlacement, applyingPlacement;
 
     public MainWindow() : this(new ApplicationSettingsStore()) { }
 
@@ -46,9 +55,16 @@ public partial class MainWindow : Window
         Programs.ContextChanged += () => { gate.RequireRelease(); UpdateChrome(); };
         interfaceSettings = new InterfaceSettings(Application.Current, UpdateAppearance);
         SizeChanged += (_, _) => UpdateAppearance();
+        LocationChanged += (_, _) => QueuePlacement();
+        SourceInitialized += (_, _) =>
+        {
+            windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+            windowSource?.AddHook(WindowMessage);
+        };
         Loaded += (_, _) =>
         {
-            FitToWorkArea();
+            placementReady = true;
+            FitToWorkArea(force: true);
             navigation.Section = AppSection.Control;
             _ = RefreshControlAsync();
             UpdateChrome();
@@ -57,7 +73,16 @@ public partial class MainWindow : Window
             padTimer.Start();
             refreshTimer.Start();
         };
-        Closed += (_, _) => { closed = true; padTimer.Stop(); refreshTimer.Stop(); Programs.Leave(); interfaceSettings.Dispose(); };
+        Closed += (_, _) =>
+        {
+            closed = true;
+            windowSource?.RemoveHook(WindowMessage);
+            windowSource = null;
+            padTimer.Stop();
+            refreshTimer.Stop();
+            Programs.Leave();
+            interfaceSettings.Dispose();
+        };
         padTimer.Tick += (_, _) => PollPad();
         refreshTimer.Tick += async (_, _) => { if (!busy && overlay == OverlayMode.None) await RefreshCurrentAsync(); };
     }
@@ -81,17 +106,41 @@ public partial class MainWindow : Window
         UpdateChrome();
     }
 
-    private void FitToWorkArea()
+    private IntPtr WindowMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message is WmDpiChanged or WmDisplayChange or WmSettingChange) QueuePlacement(force: true);
+        return IntPtr.Zero;
+    }
+
+    private void QueuePlacement(bool force = false)
+    {
+        if (!placementReady || closed || applyingPlacement) return;
+        forcePlacement |= force;
+        if (placementPending) return;
+        placementPending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            placementPending = false;
+            bool applyForce = forcePlacement;
+            forcePlacement = false;
+            FitToWorkArea(applyForce);
+        }));
+    }
+
+    private void FitToWorkArea(bool force = true)
     {
         var handle = new WindowInteropHelper(this).Handle;
-        var area = WindowPlacement.PrimaryWorkArea();
-        var scale = area.Scale;
-        double availableWidth = area.Width / scale * 0.88;
-        double availableHeight = area.Height / scale * 0.88;
-        Width = Math.Floor(Math.Min(1500, Math.Min(availableWidth, availableHeight * 16 / 9)));
-        Height = Math.Floor(Width * 9 / 16);
-        WindowState = WindowState.Normal;
-        WindowPlacement.PlaceCentered(handle, area, Width, Height);
+        var monitor = WindowPlacement.MonitorForWindow(handle);
+        if (!force && monitor == placementMonitor) return;
+
+        applyingPlacement = true;
+        try
+        {
+            WindowState = WindowState.Normal;
+            WindowPlacement.PlaceCentered(handle, WindowPlacement.WorkAreaForMonitor(monitor), PreferredWindowWidth, PreferredWindowHeight);
+            placementMonitor = monitor;
+        }
+        finally { applyingPlacement = false; }
     }
 
     private void SetStatus(string text, string? details = null)
