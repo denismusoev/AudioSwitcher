@@ -15,9 +15,6 @@ public partial class MainWindow : Window
 {
     private const double PreferredWindowWidth = 1500;
     private const double PreferredWindowHeight = 844;
-    private const int WmSettingChange = 0x001A;
-    private const int WmDisplayChange = 0x007E;
-    private const int WmDpiChanged = 0x02E0;
 
     private enum OverlayMode { None, Devices, Settings, Error }
 
@@ -37,9 +34,6 @@ public partial class MainWindow : Window
     private string? errorDetails;
     private Point pointerStart;
     private bool dragAllowed, dragged;
-    private HwndSource? windowSource;
-    private IntPtr placementMonitor;
-    private bool placementReady, placementPending, forcePlacement, applyingPlacement;
 
     public MainWindow() : this(new ApplicationSettingsStore()) { }
 
@@ -55,16 +49,10 @@ public partial class MainWindow : Window
         Programs.ContextChanged += () => { gate.RequireRelease(); UpdateChrome(); };
         interfaceSettings = new InterfaceSettings(Application.Current, UpdateAppearance);
         SizeChanged += (_, _) => UpdateAppearance();
-        LocationChanged += (_, _) => QueuePlacement();
-        SourceInitialized += (_, _) =>
-        {
-            windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-            windowSource?.AddHook(WindowMessage);
-        };
+        SourceInitialized += (_, _) => ApplyPreferredSize();
+        DpiChanged += (_, _) => ApplyPreferredSize();
         Loaded += (_, _) =>
         {
-            placementReady = true;
-            FitToWorkArea(force: true);
             navigation.Section = AppSection.Control;
             _ = RefreshControlAsync();
             UpdateChrome();
@@ -76,8 +64,6 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             closed = true;
-            windowSource?.RemoveHook(WindowMessage);
-            windowSource = null;
             padTimer.Stop();
             refreshTimer.Stop();
             Programs.Leave();
@@ -106,41 +92,13 @@ public partial class MainWindow : Window
         UpdateChrome();
     }
 
-    private IntPtr WindowMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
-    {
-        if (message is WmDpiChanged or WmDisplayChange or WmSettingChange) QueuePlacement(force: true);
-        return IntPtr.Zero;
-    }
-
-    private void QueuePlacement(bool force = false)
-    {
-        if (!placementReady || closed || applyingPlacement) return;
-        forcePlacement |= force;
-        if (placementPending) return;
-        placementPending = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
-        {
-            placementPending = false;
-            bool applyForce = forcePlacement;
-            forcePlacement = false;
-            FitToWorkArea(applyForce);
-        }));
-    }
-
-    private void FitToWorkArea(bool force = true)
+    private void ApplyPreferredSize()
     {
         var handle = new WindowInteropHelper(this).Handle;
-        var monitor = WindowPlacement.MonitorForWindow(handle);
-        if (!force && monitor == placementMonitor) return;
-
-        applyingPlacement = true;
-        try
-        {
-            WindowState = WindowState.Normal;
-            WindowPlacement.PlaceCentered(handle, WindowPlacement.WorkAreaForMonitor(monitor), PreferredWindowWidth, PreferredWindowHeight);
-            placementMonitor = monitor;
-        }
-        finally { applyingPlacement = false; }
+        if (handle == IntPtr.Zero) return;
+        var size = WindowPlacement.PreferredSizeInDips(WindowPlacement.WorkAreaForWindow(handle), PreferredWindowWidth, PreferredWindowHeight);
+        Width = size.Width;
+        Height = size.Height;
     }
 
     private void SetStatus(string text, string? details = null)
@@ -383,7 +341,12 @@ public partial class MainWindow : Window
             if (pickingDisplay)
             {
                 await Dispatcher.Yield(DispatcherPriority.ContextIdle);
-                FitToWorkArea();
+                var handle = new WindowInteropHelper(this).Handle;
+                WindowPlacement.Center(handle);
+                await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+                ApplyPreferredSize();
+                UpdateLayout();
+                WindowPlacement.Center(handle);
             }
             SetStatus($"Готово: {selected.DisplayName}");
         }

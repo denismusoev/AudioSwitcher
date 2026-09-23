@@ -97,38 +97,35 @@ internal static class SelectedFixChecks
     {
         try
         {
-            var method = typeof(WindowPlacement).GetMethod("CenteredBounds", BindingFlags.Static | BindingFlags.NonPublic);
-            Require(method != null, "Window placement has no target-DPI physical bounds calculation");
+            var method = typeof(WindowPlacement).GetMethod("PreferredSizeInDips", BindingFlags.Static | BindingFlags.NonPublic);
+            Require(method != null, "Window placement has no WPF logical-size calculation");
 
             var cases = new[]
             {
-                ("2K 100%", new WindowPlacement.WorkArea(0, 0, 2560, 1440, 1.0), (530, 298, 1500, 844)),
-                ("4K 150%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.5), (795, 447, 2250, 1266)),
-                ("4K TV 100%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.0), (1170, 658, 1500, 844)),
-                ("4K TV 150%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.5), (795, 447, 2250, 1266)),
-                ("4K TV 200%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 2.0), (420, 236, 3000, 1688)),
-                ("4K TV 300%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 3.0), (231, 130, 3378, 1900)),
-                ("left-side 4K 150%", new WindowPlacement.WorkArea(-3840, 0, 3840, 2160, 1.5), (-3045, 447, 2250, 1266))
+                ("2K 100%", new WindowPlacement.WorkArea(0, 0, 2560, 1440, 1.0), (1500d, 843.75d)),
+                ("4K 100%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.0), (1500d, 843.75d)),
+                ("4K 150%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.5), (1500d, 843.75d)),
+                ("4K 200%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 2.0), (1500d, 843.75d)),
+                ("4K 300%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 3.0), (1126.4d, 633.6d)),
+                ("left-side 4K 150%", new WindowPlacement.WorkArea(-3840, 0, 3840, 2160, 1.5), (1500d, 843.75d))
             };
 
             foreach (var (name, area, expected) in cases)
             {
-                object bounds = method!.Invoke(null, [area, 1500d, 844d])!;
-                int x = (int)bounds.GetType().GetProperty("X")!.GetValue(bounds)!;
-                int y = (int)bounds.GetType().GetProperty("Y")!.GetValue(bounds)!;
-                int width = (int)bounds.GetType().GetProperty("Width")!.GetValue(bounds)!;
-                int height = (int)bounds.GetType().GetProperty("Height")!.GetValue(bounds)!;
-                Require((x, y, width, height) == expected,
-                    $"{name}: got {x},{y} {width}x{height}; expected {expected.Item1},{expected.Item2} {expected.Item3}x{expected.Item4}");
+                object size = method!.Invoke(null, [area, 1500d, 844d])!;
+                double width = (double)size.GetType().GetProperty("Width")!.GetValue(size)!;
+                double height = (double)size.GetType().GetProperty("Height")!.GetValue(size)!;
+                Require(Math.Abs(width - expected.Item1) < 0.01 && Math.Abs(height - expected.Item2) < 0.01,
+                    $"{name}: got {width:0.##}x{height:0.##} DIP; expected {expected.Item1:0.##}x{expected.Item2:0.##} DIP");
             }
 
-            Console.WriteLine("PASS Mixed-DPI sizing and centering use target monitor bounds");
+            Console.WriteLine("PASS WPF logical sizing only clamps windows that exceed the target work area");
             Console.WriteLine("Passed: 1, Failed: 0, Skipped: 0");
             return 0;
         }
         catch (Exception error)
         {
-            Console.WriteLine("FAIL Mixed-DPI centering uses target physical bounds: " + error.Message);
+            Console.WriteLine("FAIL WPF logical sizing only clamps windows that exceed the target work area: " + error.Message);
             Console.WriteLine("Passed: 0, Failed: 1, Skipped: 0");
             return 1;
         }
