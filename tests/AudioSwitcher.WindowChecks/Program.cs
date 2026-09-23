@@ -22,6 +22,7 @@ internal static class Program
         if (args.Contains("--selected-dpi")) return SelectedFixChecks.RunDpi();
         if (args.Contains("--selection-navigation")) return SelectedFixChecks.RunSelectionNavigation();
         if (args.Contains("--selected-fixes")) return SelectedFixChecks.Run();
+        if (args.Contains("--approved-design")) return ApprovedDesignChecks.Run();
         if (args.Contains("--targeted-visual")) return FixedDesignChecks.RunTargetedVisual();
         if (args.Contains("--fixed-design")) return FixedDesignChecks.Run();
         int passed = 0, failed = 0, skipped = 0;

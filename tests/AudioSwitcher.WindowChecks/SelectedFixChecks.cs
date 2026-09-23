@@ -102,17 +102,17 @@ internal static class SelectedFixChecks
 
             var cases = new[]
             {
-                ("2K 100%", new WindowPlacement.WorkArea(0, 0, 2560, 1440, 1.0), (1500d, 843.75d)),
-                ("4K 100%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.0), (1500d, 843.75d)),
-                ("4K 150%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.5), (1500d, 843.75d)),
-                ("4K 200%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 2.0), (1500d, 843.75d)),
+                ("2K 100%", new WindowPlacement.WorkArea(0, 0, 2560, 1440, 1.0), (1360d, 765d)),
+                ("4K 100%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.0), (1360d, 765d)),
+                ("4K 150%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 1.5), (1360d, 765d)),
+                ("4K 200%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 2.0), (1360d, 765d)),
                 ("4K 300%", new WindowPlacement.WorkArea(0, 0, 3840, 2160, 3.0), (1126.4d, 633.6d)),
-                ("left-side 4K 150%", new WindowPlacement.WorkArea(-3840, 0, 3840, 2160, 1.5), (1500d, 843.75d))
+                ("left-side 4K 150%", new WindowPlacement.WorkArea(-3840, 0, 3840, 2160, 1.5), (1360d, 765d))
             };
 
             foreach (var (name, area, expected) in cases)
             {
-                object size = method!.Invoke(null, [area, 1500d, 844d])!;
+                object size = method!.Invoke(null, [area, 1360d, 765d])!;
                 double width = (double)size.GetType().GetProperty("Width")!.GetValue(size)!;
                 double height = (double)size.GetType().GetProperty("Height")!.GetValue(size)!;
                 Require(Math.Abs(width - expected.Item1) < 0.01 && Math.Abs(height - expected.Item2) < 0.01,

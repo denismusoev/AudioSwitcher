@@ -13,8 +13,8 @@ namespace AudioSwitcher;
 
 public partial class MainWindow : Window
 {
-    private const double PreferredWindowWidth = 1500;
-    private const double PreferredWindowHeight = 844;
+    private const double PreferredWindowWidth = 1360;
+    private const double PreferredWindowHeight = 765;
 
     private enum OverlayMode { None, Devices, Settings, Error }
 
@@ -76,19 +76,19 @@ public partial class MainWindow : Window
     private void UpdateAppearance()
     {
         bool compact = ActualWidth > 0 && ActualWidth < 1200;
-        WindowFrame.Padding = compact ? new Thickness(32, 32, 32, 76) : new Thickness(80, 60, 110, 76);
-        SectionColumn.Width = new GridLength(compact ? 240 : 364);
-        GapColumn.Width = new GridLength(compact ? 32 : 63);
-        FooterSectionColumn.Width = new GridLength(compact ? 240 : 364);
-        FooterGapColumn.Width = new GridLength(compact ? 32 : 63);
-        SectionStack.Margin = compact ? new Thickness(0, 8, 0, 0) : new Thickness(53, 8, 0, 0);
-        foreach (var tab in new[] { ControlTab, RunningTab, LaunchTab }) tab.Width = compact ? 240 : 311;
-        FooterSurface.Margin = compact ? new Thickness(32, 0, 32, 16) : new Thickness(80, 0, 110, 28);
-        SettingsSurface.Width = compact ? double.NaN : 884;
+        WindowFrame.Padding = compact ? new Thickness(32, 32, 32, 76) : new Thickness(64, 48, 80, 68);
+        SectionColumn.Width = new GridLength(compact ? 240 : 320);
+        GapColumn.Width = new GridLength(compact ? 32 : 48);
+        FooterSectionColumn.Width = new GridLength(compact ? 240 : 320);
+        FooterGapColumn.Width = new GridLength(compact ? 32 : 48);
+        SectionStack.Margin = compact ? new Thickness(0, 8, 0, 0) : new Thickness(32, 8, 0, 0);
+        foreach (var tab in new[] { ControlTab, RunningTab, LaunchTab }) tab.Width = compact ? 240 : 280;
+        FooterSurface.Margin = compact ? new Thickness(32, 0, 32, 16) : new Thickness(64, 0, 80, 20);
+        SettingsSurface.Width = compact ? double.NaN : 840;
         SettingsSurface.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        SettingsSurface.Margin = compact ? new Thickness(304, 96, 32, 76) : new Thickness(506, 135, 0, 94);
+        SettingsSurface.Margin = compact ? new Thickness(304, 96, 32, 76) : new Thickness(432, 123, 0, 86);
         DevicePickerOverlay.Width = Math.Min(450, Math.Max(280, ActualWidth - 64));
-        DevicePickerOverlay.Margin = compact ? new Thickness(0, 32, 32, 76) : new Thickness(0, 40, 40, 94);
+        DevicePickerOverlay.Margin = compact ? new Thickness(0, 32, 32, 76) : new Thickness(0, 40, 40, 86);
         UpdateChrome();
     }
 

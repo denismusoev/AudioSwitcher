@@ -28,9 +28,9 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
     private LaunchKind Kind => Path.GetExtension(EntryTarget.Text.Trim()).ToLowerInvariant() switch { ".lnk" => LaunchKind.Shortcut, ".url" => LaunchKind.InternetShortcut, _ => LaunchKind.Executable };
     private void TargetChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
-        if (ExecutableOptions == null) return;
+        if (ArgumentsAttribute == null || DirectoryAttribute == null) return;
         bool executable = Kind == LaunchKind.Executable;
-        ExecutableOptions.Visibility = executable ? Visibility.Visible : Visibility.Collapsed;
+        ArgumentsAttribute.Visibility = DirectoryAttribute.Visibility = executable ? Visibility.Visible : Visibility.Collapsed;
         ShortcutHint.Visibility = executable ? Visibility.Collapsed : Visibility.Visible;
     }
     private void BrowseClick(object sender, RoutedEventArgs e)
@@ -73,6 +73,7 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
     private void SelectField(int index)
     {
         field = index; IsTextEditing = false;
+        UpdateTargetPresentation();
         Attributes[field].Focus(); Attributes[field].BringIntoView();
     }
     public void MoveField(PadAction direction)
@@ -86,7 +87,7 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
     {
         if (saving) return;
         if (IsTextEditing) return;
-        IsTextEditing = true; Inputs[field].Focus();
+        IsTextEditing = true; UpdateTargetPresentation(); Inputs[field].Focus();
     }
     public bool EndFieldInput()
     {
@@ -96,11 +97,18 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
     private void AttributeMouseDown(object sender, MouseButtonEventArgs e)
     {
         field = Array.IndexOf(Attributes, sender);
-        IsTextEditing = true; Inputs[field].Focus();
+        IsTextEditing = true; UpdateTargetPresentation(); Inputs[field].Focus();
     }
     private void InputFocused(object sender, KeyboardFocusChangedEventArgs e)
     {
-        field = Array.IndexOf(Inputs, sender); IsTextEditing = true;
+        field = Array.IndexOf(Inputs, sender); IsTextEditing = true; UpdateTargetPresentation();
+    }
+    private void UpdateTargetPresentation()
+    {
+        if (EntryTarget == null || TargetDisplay == null) return;
+        bool editingTarget = IsTextEditing && field == 1;
+        EntryTarget.Visibility = editingTarget ? Visibility.Visible : Visibility.Collapsed;
+        TargetDisplay.Visibility = editingTarget ? Visibility.Collapsed : Visibility.Visible;
     }
     public void Close() { if (!saving) { Visibility = Visibility.Collapsed; Completed?.Invoke(); } }
     private void CancelClick(object sender, RoutedEventArgs e) => Close();
