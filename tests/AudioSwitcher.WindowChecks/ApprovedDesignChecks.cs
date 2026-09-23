@@ -162,6 +162,68 @@ internal static class ApprovedDesignChecks
                             $"Control offset is {controlOffset:0.##}; running offset is {runningOffset:0.##}; launch offset is {launchOffset:0.##}");
                     });
 
+                    Check("Launch edit command opens the selected entry in the editor", () =>
+                    {
+                        Call(window, "SwitchSection", AppSection.Control);
+                        Call(window, "SwitchSection", AppSection.Launch);
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        var entry = new LaunchEntry(Guid.NewGuid(), "Редактируемая программа", LaunchKind.Executable, Environment.ProcessPath!, "--before", "");
+                        typeof(ProgramsView).GetField("catalog", BindingFlags.Instance | BindingFlags.NonPublic)!
+                            .SetValue(programs, new LaunchCatalogLoad(new LaunchCatalog(1, [entry]), true, null));
+                        Call(programs, "ShowCatalog", new object?[] { null });
+                        Call(window, "Execute", PadAction.Confirm);
+                        window.UpdateLayout();
+
+                        var edit = (Button)window.FindName("SecondaryCommand");
+                        edit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, edit));
+                        window.UpdateLayout();
+
+                        Require(programs.Editing && programs.Editor != null && programs.Editor.IsVisible,
+                            "Edit command did not open the editor");
+                        Require(((TextBox)programs.Editor!.FindName("EntryName")).Text == entry.Name,
+                            "Editor did not receive the selected entry");
+                        programs.Back();
+                    });
+
+                    Check("Delete confirmation uses the device-picker overlay pattern", () =>
+                    {
+                        Call(window, "SwitchSection", AppSection.Control);
+                        Call(window, "SwitchSection", AppSection.Launch);
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        var entry = new LaunchEntry(Guid.NewGuid(), "Очень длинное название программы для удаления", LaunchKind.Executable, Environment.ProcessPath!, "", "");
+                        typeof(ProgramsView).GetField("catalog", BindingFlags.Instance | BindingFlags.NonPublic)!
+                            .SetValue(programs, new LaunchCatalogLoad(new LaunchCatalog(1, [entry]), true, null));
+                        Call(programs, "ShowCatalog", new object?[] { null });
+                        programs.SecondaryAsync().GetAwaiter().GetResult();
+                        Require(programs.Editing, $"Editor did not open; section={programs.Navigation.Section}, active={programs.Navigation.SectionActive}, panel={programs.Navigation.Panel}");
+                        programs.DeleteEditing();
+                        window.UpdateLayout();
+
+                        var picker = (Border)window.FindName("DevicePickerOverlay");
+                        var confirmation = (Border)window.FindName("DeleteConfirmationOverlay");
+                        var choices = (ListBox)window.FindName("DeleteConfirmationChoices");
+                        Require(confirmation.IsVisible, $"Delete confirmation overlay is not visible; editing={programs.Editing}, panel={programs.Navigation.Panel}");
+                        Require(Math.Abs(confirmation.ActualWidth - picker.Width) < 0.5,
+                            $"Delete confirmation width {confirmation.ActualWidth:0.##} differs from picker width {picker.Width:0.##}");
+                        Require(confirmation.Margin == picker.Margin
+                            && confirmation.HorizontalAlignment == picker.HorizontalAlignment
+                            && confirmation.VerticalAlignment == picker.VerticalAlignment,
+                            "Delete confirmation geometry differs from the device picker");
+                        Require(choices.SelectedIndex == 0
+                            && choices.ItemContainerGenerator.ContainerFromIndex(0) is ListBoxItem cancel
+                            && cancel.IsKeyboardFocused,
+                            "Delete confirmation does not focus Cancel by default");
+                        var delete = (ListBoxItem)choices.ItemContainerGenerator.ContainerFromIndex(1);
+                        Require(delete.Foreground == app.FindResource("ErrorText"),
+                            "Delete action does not use the danger foreground");
+                        var title = (TextBlock)window.FindName("DeleteConfirmationTitle");
+                        Require(title.Text.Contains(entry.Name) && title.TextWrapping == TextWrapping.Wrap,
+                            "Delete confirmation does not show the full record identity");
+
+                        Call(window, "Execute", PadAction.Close);
+                        Require(!confirmation.IsVisible, "Back did not close the delete confirmation");
+                    });
+
                     Check("Editor focus outline does not move field text", () =>
                     {
                         var editor = new LaunchEntryDialog(null, _ => Task.CompletedTask);

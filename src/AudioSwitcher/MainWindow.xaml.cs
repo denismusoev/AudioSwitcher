@@ -16,7 +16,8 @@ public partial class MainWindow : Window
     private const double PreferredWindowWidth = 1360;
     private const double PreferredWindowHeight = 765;
 
-    private enum OverlayMode { None, Devices, Settings, Error }
+    private enum OverlayMode { None, Devices, DeleteConfirmation, Settings, Error }
+    private sealed record OverlayChoice(string Id, string DisplayName);
 
     private readonly AudioService audio = new();
     private readonly DisplayService display = new();
@@ -46,6 +47,7 @@ public partial class MainWindow : Window
         Programs.MoveBehavior = settingsStore.Load().MoveBehavior;
         Programs.TransferCompleted += Close;
         Programs.StatusChanged += SetStatus;
+        Programs.DeleteConfirmationRequested += OpenDeleteConfirmation;
         Programs.ContextChanged += () => { gate.RequireRelease(); UpdateChrome(); };
         interfaceSettings = new InterfaceSettings(Application.Current, UpdateAppearance);
         SizeChanged += (_, _) => UpdateAppearance();
@@ -89,6 +91,8 @@ public partial class MainWindow : Window
         SettingsSurface.Margin = compact ? new Thickness(304, 96, 32, 76) : new Thickness(432, 123, 0, 86);
         DevicePickerOverlay.Width = Math.Min(450, Math.Max(280, ActualWidth - 64));
         DevicePickerOverlay.Margin = compact ? new Thickness(0, 32, 32, 76) : new Thickness(0, 40, 40, 86);
+        DeleteConfirmationOverlay.Width = DevicePickerOverlay.Width;
+        DeleteConfirmationOverlay.Margin = DevicePickerOverlay.Margin;
         UpdateChrome();
     }
 
@@ -239,6 +243,19 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError("Не удалось загрузить устройства", ex.Message); }
     }
 
+    private void OpenDeleteConfirmation(string entryName)
+    {
+        DeleteConfirmationTitle.Text = $"Удалить запись «{entryName}»?";
+        DeleteConfirmationChoices.ItemsSource = new[]
+        {
+            new OverlayChoice("cancel", "Отмена"),
+            new OverlayChoice("delete", "Удалить запись")
+        };
+        DeleteConfirmationChoices.SelectedIndex = 0;
+        ShowOverlay(OverlayMode.DeleteConfirmation);
+        FocusSelection(DeleteConfirmationChoices);
+    }
+
     private void OpenSettings()
     {
         SettingsChoices.SelectedIndex = Programs.MoveBehavior == WindowMoveBehavior.KeepUtilityFocused ? 0 : 1;
@@ -276,15 +293,17 @@ public partial class MainWindow : Window
         overlay = mode;
         OverlayShade.Visibility = Visibility.Visible;
         DevicePickerOverlay.Visibility = mode == OverlayMode.Devices ? Visibility.Visible : Visibility.Collapsed;
+        DeleteConfirmationOverlay.Visibility = mode == OverlayMode.DeleteConfirmation ? Visibility.Visible : Visibility.Collapsed;
         SettingsSurface.Visibility = mode == OverlayMode.Settings ? Visibility.Visible : Visibility.Collapsed;
         DetailsSurface.Visibility = mode == OverlayMode.Error ? Visibility.Visible : Visibility.Collapsed;
+        ModalBackdrop.Visibility = mode is OverlayMode.Devices or OverlayMode.DeleteConfirmation ? Visibility.Visible : Visibility.Collapsed;
         if (mode == OverlayMode.Settings) SetPrimarySurfaceVisibility(false);
         WindowFrame.IsEnabled = false;
         gate.RequireRelease();
         UpdateChrome();
     }
 
-    private bool CloseDetails()
+    private bool CloseDetails(bool cancelDeleteConfirmation = true)
     {
         if (overlay == OverlayMode.None) return false;
         if (overlay == OverlayMode.Error && overlayReturnMode != OverlayMode.None)
@@ -292,8 +311,10 @@ public partial class MainWindow : Window
             overlay = overlayReturnMode;
             overlayReturnMode = OverlayMode.None;
             DevicePickerOverlay.Visibility = overlay == OverlayMode.Devices ? Visibility.Visible : Visibility.Collapsed;
+            DeleteConfirmationOverlay.Visibility = overlay == OverlayMode.DeleteConfirmation ? Visibility.Visible : Visibility.Collapsed;
             SettingsSurface.Visibility = overlay == OverlayMode.Settings ? Visibility.Visible : Visibility.Collapsed;
             DetailsSurface.Visibility = Visibility.Collapsed;
+            ModalBackdrop.Visibility = overlay is OverlayMode.Devices or OverlayMode.DeleteConfirmation ? Visibility.Visible : Visibility.Collapsed;
             var returnFocus = overlayReturnFocus;
             overlayReturnFocus = null;
             if (returnFocus?.IsVisible == true && returnFocus.IsEnabled) returnFocus.Focus();
@@ -307,13 +328,16 @@ public partial class MainWindow : Window
         overlayReturnMode = OverlayMode.None;
         overlayReturnFocus = null;
         OverlayShade.Visibility = Visibility.Collapsed;
-        DevicePickerOverlay.Visibility = SettingsSurface.Visibility = DetailsSurface.Visibility = Visibility.Collapsed;
+        ModalBackdrop.Visibility = Visibility.Collapsed;
+        DevicePickerOverlay.Visibility = DeleteConfirmationOverlay.Visibility = SettingsSurface.Visibility = DetailsSurface.Visibility = Visibility.Collapsed;
         SetPrimarySurfaceVisibility(true);
         WindowFrame.IsEnabled = true;
         var focusOrigin = overlayFocusOrigin;
         overlayFocusOrigin = null;
         if (focusOrigin?.IsVisible == true && focusOrigin.IsEnabled) focusOrigin.Focus();
         else RestoreFocus();
+        if (cancelDeleteConfirmation && Programs.Navigation.Panel == ProgramPanel.ConfirmDelete)
+            Programs.CancelDeleteConfirmation();
         gate.RequireRelease();
         UpdateChrome();
         return true;
@@ -406,7 +430,14 @@ public partial class MainWindow : Window
             if (overlay == OverlayMode.Error) { if (action == PadAction.Up) ErrorScroll.LineUp(); else if (action == PadAction.Down) ErrorScroll.LineDown(); else if (action == PadAction.Confirm) CloseDetails(); }
             else if (overlay == OverlayMode.Devices && action == PadAction.Up) MoveOverlay(-1);
             else if (overlay == OverlayMode.Devices && action == PadAction.Down) MoveOverlay(1);
-            else if (action == PadAction.Confirm) { if (overlay == OverlayMode.Devices) _ = ApplySelected(); else ToggleSetting(); }
+            else if (overlay == OverlayMode.DeleteConfirmation && action == PadAction.Up) MoveOverlaySelection(DeleteConfirmationChoices, -1);
+            else if (overlay == OverlayMode.DeleteConfirmation && action == PadAction.Down) MoveOverlaySelection(DeleteConfirmationChoices, 1);
+            else if (action == PadAction.Confirm)
+            {
+                if (overlay == OverlayMode.Devices) _ = ApplySelected();
+                else if (overlay == OverlayMode.DeleteConfirmation) _ = ApplyDeleteConfirmation();
+                else ToggleSetting();
+            }
             return;
         }
         switch (action)
@@ -453,12 +484,25 @@ public partial class MainWindow : Window
         if (direction > 0) DisplayControlCard.Focus(); else AudioControlCard.Focus();
     }
 
-    private void MoveOverlay(int direction)
+    private void MoveOverlay(int direction) => MoveOverlaySelection(Devices, direction);
+
+    private void MoveOverlaySelection(ListBox list, int direction)
     {
-        var list = Devices;
         if (list.Items.Count == 0) return;
         list.SelectedIndex = Math.Clamp(list.SelectedIndex + direction, 0, list.Items.Count - 1);
         FocusSelection(list);
+    }
+
+    private async Task ApplyDeleteConfirmation()
+    {
+        if (DeleteConfirmationChoices.SelectedItem is not OverlayChoice choice) return;
+        if (choice.Id == "cancel")
+        {
+            CloseDetails();
+            return;
+        }
+        CloseDetails(cancelDeleteConfirmation: false);
+        await Programs.ConfirmDeleteAsync();
     }
 
     private void FocusSelection(ListBox list)
@@ -520,6 +564,11 @@ public partial class MainWindow : Window
     {
         if (!dragged && ItemsControl.ContainerFromElement(Devices, e.OriginalSource as DependencyObject) is ListBoxItem item)
         { Devices.SelectedItem = item.DataContext; e.Handled = true; await ApplySelected(); }
+    }
+    private async void DeleteConfirmationMouseClick(object sender, MouseButtonEventArgs e)
+    {
+        if (!dragged && ItemsControl.ContainerFromElement(DeleteConfirmationChoices, e.OriginalSource as DependencyObject) is ListBoxItem item)
+        { DeleteConfirmationChoices.SelectedItem = item.DataContext; e.Handled = true; await ApplyDeleteConfirmation(); }
     }
     private void SettingsMouseClick(object sender, MouseButtonEventArgs e)
     {

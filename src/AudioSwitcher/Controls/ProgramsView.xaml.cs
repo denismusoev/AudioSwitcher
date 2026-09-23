@@ -28,6 +28,7 @@ public partial class ProgramsView : UserControl
     private string snapshotSignature = "";
     private RunningProgram? currentProgram;
     private LaunchEntry? currentEntry;
+    private ProgramPanel deleteReturnPanel;
     private string? returnProgramKey;
     private Guid? returnEntryId;
     public LaunchEntryDialog? Editor { get; private set; }
@@ -41,6 +42,7 @@ public partial class ProgramsView : UserControl
     public event Action<string, string?>? StatusChanged;
     public event Action? ContextChanged;
     public event Action? TransferCompleted;
+    public event Action<string>? DeleteConfirmationRequested;
     public WindowMoveBehavior MoveBehavior { get; set; } = WindowMoveBehavior.KeepUtilityFocused;
 
     public ProgramsView() : this(new LaunchCatalogStore()) { }
@@ -304,14 +306,9 @@ public partial class ProgramsView : UserControl
             case "add": await EditEntry(null); break;
             case "edit": if (currentEntry != null) await EditEntry(currentEntry); break;
             case "delete":
-                ShowPanel(ProgramPanel.ConfirmDelete, $"Удалить запись «{currentEntry?.Name}»?", "Приложение и файл ярлыка останутся на компьютере.",
-                    new[] { new Choice("cancel", "Отмена"), new Choice("delete-entry", "Удалить запись") }); break;
+                RequestDeleteConfirmation(); break;
             case "delete-entry":
-                if (currentEntry == null) return;
-                if (await RunOperation("Сохранение…", async _ => {
-                    var next = new LaunchCatalog(1, catalog.Catalog.Entries.Where(e => e.Id != currentEntry.Id).ToArray());
-                    await Task.Run(() => store.Save(next)); catalog = new(next, true, null); ShowCatalog(); return new(ProgramResultCode.Success, "Запись удалена");
-                })) ReturnToList(); break;
+                await ConfirmDeleteAsync(); break;
             case "reset":
                 if (await RunOperation("Сохранение копии…", async _ => { await Task.Run(store.Reset); catalog = store.Load(); ShowCatalog(); return new(ProgramResultCode.Success, "Каталог сброшен. Копия исходного файла сохранена"); })) ReturnToList(); break;
         }
@@ -499,8 +496,47 @@ public partial class ProgramsView : UserControl
         EditorHost.Visibility = Visibility.Collapsed;
         EditorHost.Content = null;
         Editor = null;
-        ShowPanel(ProgramPanel.ConfirmDelete, $"Удалить запись «{currentEntry.Name}»?", "Приложение и файл останутся на компьютере.",
-            new[] { new Choice("cancel", "Отмена"), new Choice("delete-entry", "Удалить запись") });
+        RequestDeleteConfirmation();
+    }
+
+    private void RequestDeleteConfirmation()
+    {
+        if (currentEntry == null) return;
+        if (DeleteConfirmationRequested == null)
+        {
+            ShowPanel(ProgramPanel.ConfirmDelete, $"Удалить запись «{currentEntry.Name}»?", "Приложение и файл останутся на компьютере.",
+                new[] { new Choice("cancel", "Отмена"), new Choice("delete-entry", "Удалить запись") });
+            return;
+        }
+        deleteReturnPanel = Navigation.Panel == ProgramPanel.Actions ? ProgramPanel.Actions : ProgramPanel.List;
+        Navigation.Panel = ProgramPanel.ConfirmDelete;
+        ProgramActions.SelectedIndex = -1;
+        DeleteConfirmationRequested.Invoke(currentEntry.Name);
+        ContextChanged?.Invoke();
+    }
+
+    public void CancelDeleteConfirmation()
+    {
+        if (Navigation.Panel != ProgramPanel.ConfirmDelete) return;
+        if (deleteReturnPanel == ProgramPanel.Actions)
+        {
+            Navigation.Panel = ProgramPanel.Actions;
+            ShowActions();
+        }
+        else ReturnToList();
+    }
+
+    public async Task ConfirmDeleteAsync()
+    {
+        if (Navigation.Panel != ProgramPanel.ConfirmDelete || currentEntry == null) return;
+        var entry = currentEntry;
+        Navigation.Panel = deleteReturnPanel;
+        if (deleteReturnPanel == ProgramPanel.Actions) ShowActions();
+        else ReturnToList();
+        if (await RunOperation("Сохранение…", async _ => {
+            var next = new LaunchCatalog(1, catalog.Catalog.Entries.Where(e => e.Id != entry.Id).ToArray());
+            await Task.Run(() => store.Save(next)); catalog = new(next, true, null); ShowCatalog(); return new(ProgramResultCode.Success, "Запись удалена");
+        })) ReturnToList();
     }
     private async void ListClick(object sender, MouseButtonEventArgs e)
     {
