@@ -51,13 +51,19 @@ internal static class ApprovedDesignChecks
                             $"Status font is {status.FontSize:0.##}");
                     });
 
-                    Check("Controller commands are visible buttons with an icon-only Menu badge", () =>
+                    Check("Controller hints have no outer or keycap frames", () =>
                     {
                         var primary = (Button)window.FindName("PrimaryCommand");
                         var settings = (Button)window.FindName("SettingsCommand");
+                        primary.ApplyTemplate();
+                        window.UpdateLayout();
                         Require(primary.MinHeight >= 42, $"Primary command height is {primary.MinHeight}");
-                        Require(primary.Background is SolidColorBrush background && background.Color.A > 0,
-                            "Primary command has no visible resting surface");
+                        Require(primary.Background is SolidColorBrush background && background.Color.A == 0,
+                            "Primary command still has a resting fill");
+                        Require(primary.BorderBrush is SolidColorBrush outline && outline.Color.A == 0,
+                            "Primary command still has a resting outline");
+                        var keycap = Descendants<Border>(primary).First(border => Math.Abs(border.MinWidth - (double)app.FindResource("BadgeSize")) < 0.01);
+                        Require(keycap.BorderThickness == new Thickness(0), $"Keycap border is still {keycap.BorderThickness}");
                         Require(settings.Tag?.ToString() is "☰", $"Menu badge is still '{settings.Tag}'");
                     });
 
@@ -105,6 +111,75 @@ internal static class ApprovedDesignChecks
                             "Editor fields do not share aligned rows");
                     });
 
+                    Check("Launch root has no subtitle and main pages use the compact header gap", () =>
+                    {
+                        var controlSurface = (Grid)window.FindName("ControlSurface");
+                        Require(Math.Abs(controlSurface.RowDefinitions[0].MinHeight - 52) < 0.01,
+                            $"Control header remains {controlSurface.RowDefinitions[0].MinHeight}");
+                        Call(window, "SwitchSection", AppSection.Launch);
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        var listsSurface = (Grid)programs.FindName("ListsSurface");
+                        var subtitle = (TextBlock)programs.FindName("ListSubtitle");
+                        Require(Math.Abs(listsSurface.RowDefinitions[0].MinHeight - 52) < 0.01,
+                            $"Program-list header remains {listsSurface.RowDefinitions[0].MinHeight}");
+                        Require(subtitle.Visibility == Visibility.Collapsed && string.IsNullOrEmpty(subtitle.Text),
+                            $"Launch subtitle is still visible: '{subtitle.Text}'");
+                    });
+
+                    Check("Launch first-row content starts at the same visual offset as other main pages", () =>
+                    {
+                        Call(window, "SwitchSection", AppSection.Control);
+                        var controlSurface = (Grid)window.FindName("ControlSurface");
+                        var controlTitle = Descendants<TextBlock>(controlSurface).Single(text => text.Text == "Быстрые действия");
+                        var audioCard = (Button)window.FindName("AudioControlCard");
+                        var audioLabel = Descendants<TextBlock>(audioCard).Single(text => text.Text == "Устройство звука");
+                        window.UpdateLayout();
+                        double controlOffset = audioLabel.TranslatePoint(new Point(), controlSurface).Y
+                            - controlTitle.TranslatePoint(new Point(), controlSurface).Y;
+
+                        Call(window, "SwitchSection", AppSection.Running);
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        var runningList = (ListBox)programs.FindName("RunningList");
+                        runningList.ItemsSource = new[] { new { DisplayName = "Программа" } };
+                        window.UpdateLayout();
+                        var runningTitle = (TextBlock)programs.FindName("ListTitle");
+                        var runningRow = (ListBoxItem)runningList.ItemContainerGenerator.ContainerFromIndex(0);
+                        var runningLabel = Descendants<TextBlock>(runningRow).Single(text => text.Text == "Программа");
+                        double runningOffset = runningLabel.TranslatePoint(new Point(), programs).Y
+                            - runningTitle.TranslatePoint(new Point(), programs).Y;
+
+                        Call(window, "SwitchSection", AppSection.Launch);
+                        var launchList = (ListBox)programs.FindName("LaunchList");
+                        launchList.ItemsSource = new[] { new { DisplayName = "Программа", DisplayDetails = "Путь" } };
+                        window.UpdateLayout();
+                        var launchTitle = (TextBlock)programs.FindName("ListTitle");
+                        var launchRow = (ListBoxItem)launchList.ItemContainerGenerator.ContainerFromIndex(0);
+                        var launchLabel = Descendants<TextBlock>(launchRow).Single(text => text.Text == "Программа");
+                        double launchOffset = launchLabel.TranslatePoint(new Point(), programs).Y
+                            - launchTitle.TranslatePoint(new Point(), programs).Y;
+
+                        Require(Math.Abs(controlOffset - runningOffset) < 0.5 && Math.Abs(controlOffset - launchOffset) < 0.5,
+                            $"Control offset is {controlOffset:0.##}; running offset is {runningOffset:0.##}; launch offset is {launchOffset:0.##}");
+                    });
+
+                    Check("Editor focus outline does not move field text", () =>
+                    {
+                        var editor = new LaunchEntryDialog(null, _ => Task.CompletedTask);
+                        var host = new Window { Width = 900, Height = 500, Content = editor, ShowInTaskbar = false, WindowStyle = WindowStyle.None };
+                        host.Show();
+                        host.UpdateLayout();
+                        var name = (Border)editor.FindName("NameAttribute");
+                        var target = (Border)editor.FindName("TargetAttribute");
+                        var label = (Label)editor.FindName("NameLabel");
+                        target.Focus(); host.UpdateLayout();
+                        Point resting = label.TranslatePoint(new Point(), name);
+                        name.Focus(); host.UpdateLayout();
+                        Point focused = label.TranslatePoint(new Point(), name);
+                        Require(Math.Abs(resting.X - focused.X) < 0.01 && Math.Abs(resting.Y - focused.Y) < 0.01,
+                            $"Field text moved from {resting} to {focused}");
+                        host.Close();
+                    });
+
                     Check("Internal window-picker heading keeps the parent heading origin", () =>
                     {
                         Call(window, "SwitchSection", AppSection.Running);
@@ -129,9 +204,12 @@ internal static class ApprovedDesignChecks
                         programs.ConfirmAsync().GetAwaiter().GetResult();
                         window.UpdateLayout();
                         var panelTitle = (TextBlock)programs.FindName("PanelTitle");
+                        var panelCard = (Border)programs.FindName("PanelCard");
                         Point childOrigin = panelTitle.TranslatePoint(new Point(), programs);
                         Require(Math.Abs(parentOrigin.X - childOrigin.X) < 0.5 && Math.Abs(parentOrigin.Y - childOrigin.Y) < 0.5,
                             $"Parent heading is at {parentOrigin}; internal heading is at {childOrigin}");
+                        Require(Math.Abs(panelCard.MinHeight - 69) < 0.01,
+                            $"Internal contextual header changed to {panelCard.MinHeight}");
                     });
                 }
                 finally
