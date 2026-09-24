@@ -71,6 +71,12 @@ Check("Program panels cancel before closing the application", () => {
     Equal(false, navigation.ChangeSection(-1)); Equal(AppSection.Running, navigation.Section);
     Equal(true, navigation.Back()); Equal(ProgramPanel.List, navigation.Panel);
 });
+Check("A single program window closes directly while multiple windows require a picker", () => {
+    var first = new WindowTarget(new(10, 100), (nint)1, "First", "Экран 1", false);
+    var second = new WindowTarget(new(10, 100), (nint)2, "Second", "Экран 2", false);
+    Equal(first, ProgramActionPolicy.DirectCloseTarget(new(first.Process, "Game", [first])));
+    Equal<WindowTarget?>(null, ProgramActionPolicy.DirectCloseTarget(new(first.Process, "Game", [first, second])));
+});
 Check("Up and down wrap through the three main sections", () => {
     var navigation = new NavigationState();
     Equal(NavigationTransition.SectionChanged, navigation.Navigate(PadAction.Down)); Equal(AppSection.Running, navigation.Section);

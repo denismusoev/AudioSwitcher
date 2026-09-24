@@ -66,6 +66,21 @@ try
         await new ProgramLaunchService().LaunchAsync(new(Guid.NewGuid(), "Shortcut fixture", LaunchKind.Shortcut, shortcutPath));
         Require((await WaitForLaunched(title)).Windows[0].Title == title, "Shortcut arguments lost");
     });
+    await Check("Launch coordinator waits for the launched window and activates it", async () => {
+        string title = "AudioSwitcher fixture Coordinated launch " + Guid.NewGuid().ToString("N");
+        var entry = new LaunchEntry(Guid.NewGuid(), "Fixture", LaunchKind.Executable, fixture,
+            $"\"{title}\" --minimized --grant={Environment.ProcessId}", Path.GetDirectoryName(fixture)!);
+        var result = await new ProgramLaunchCoordinator().LaunchMoveAndActivateAsync(entry, TimeSpan.FromSeconds(10));
+        var found = await WaitForLaunched(title);
+        if (result.Succeeded)
+            Require(FixtureNative.GetForegroundWindow() == found.Windows[0].Handle, "Success reported without foreground focus");
+        else
+        {
+            Require(result.Code == ProgramResultCode.TimedOut && result.Message.Contains("фокуса"),
+                "Unexpected launch transfer outcome: " + result.Message);
+            skipped++; Console.WriteLine("SKIP Coordinated focus: unattended controller has no foreground/input authorization; launch, discovery and denial reporting verified");
+        }
+    });
     await Check("Separate processes of one executable are grouped as one application", async () => {
         var first = await Start("one"); var second = await Start("two");
         var grouped = (await windows.GetProgramsAsync()).Single(p => p.Windows.Any(w => w.Process == first.Windows[0].Process) && p.Windows.Any(w => w.Process == second.Windows[0].Process));

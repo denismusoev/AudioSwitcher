@@ -33,12 +33,16 @@ public sealed class ProgramLaunchService
         };
     }
 
-    public Task LaunchAsync(LaunchEntry entry, CancellationToken cancellationToken = default) => Task.Run(() =>
+    public Task<int?> LaunchAsync(LaunchEntry entry, CancellationToken cancellationToken = default) => Task.Run(() =>
     {
         cancellationToken.ThrowIfCancellationRequested();
         var info = BuildStartInfo(entry);
         cancellationToken.ThrowIfCancellationRequested();
-        try { using var process = Process.Start(info); }
+        try
+        {
+            using var process = Process.Start(info);
+            return process?.Id;
+        }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             throw new InvalidOperationException("Не удалось отправить команду запуска. Проверьте файл и регистрацию программы или игрового протокола: " + e.Message, e);

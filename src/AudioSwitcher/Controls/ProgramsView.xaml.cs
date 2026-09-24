@@ -18,7 +18,7 @@ public partial class ProgramsView : UserControl
     private readonly ProgramWindowService windows = new();
     private readonly ProgramWindowMover mover = new();
     private readonly ProgramProcessService processes = new();
-    private readonly ProgramLaunchService launcher = new();
+    private readonly ProgramLaunchCoordinator launchCoordinator = new();
     private readonly LaunchCatalogStore store;
     private LaunchCatalogLoad catalog = new(new(1, []), true, null);
     private CancellationTokenSource? lifetime;
@@ -271,8 +271,7 @@ public partial class ProgramsView : UserControl
         if (!InPanel)
         {
             if (Navigation.LaunchList && LaunchList.SelectedItem is CatalogRow row)
-            { currentEntry = row.Entry; currentProgram = null;
-                if (await RunOperation("Открытие…", async token => { await launcher.LaunchAsync(currentEntry, token); return new(ProgramResultCode.Success, "Команда запуска отправлена"); })) ReturnToList(); }
+            { currentEntry = row.Entry; currentProgram = null; await LaunchEntry(currentEntry); }
             else if (!Navigation.LaunchList && RunningList.SelectedItem is RunningProgram program)
             {
                 currentProgram = program; currentEntry = null;
@@ -289,14 +288,14 @@ public partial class ProgramsView : UserControl
             case "cancel": Back(); break;
             case "launch":
                 if (currentEntry == null) return;
-                if (await RunOperation("Открытие…", async token => { await launcher.LaunchAsync(currentEntry, token); return new(ProgramResultCode.Success, $"Команда запуска отправлена: {currentEntry.Name}"); })) ReturnToList();
+                await LaunchEntry(currentEntry);
                 break;
             case "move":
                 if (currentProgram == null) return;
                 if (currentProgram.Windows.Count == 1) await MoveWindow(currentProgram.Windows[0]);
                 else ShowPanel(ProgramPanel.Windows, "Какое окно переместить?", currentProgram.Name, currentProgram.Windows);
                 break;
-            case "close": if (currentProgram != null) ShowCloseChoices(currentProgram); break;
+            case "close": if (currentProgram != null) await CloseProgram(currentProgram); break;
             case "close-window":
                 if (choice.Window != null && await RunOperation("Закрытие…", token => processes.CloseAsync(choice.Window, token)))
                 { ReturnToList(); await RefreshAsync(quiet: true); } break;
@@ -406,6 +405,18 @@ public partial class ProgramsView : UserControl
         await Dispatcher.Yield(DispatcherPriority.ContextIdle);
         await RefreshAsync(quiet: true);
     }
+    private async Task LaunchEntry(LaunchEntry entry)
+    {
+        if (await RunOperation("Запуск и перенос…", token => launchCoordinator.LaunchMoveAndActivateAsync(entry, token)))
+            TransferCompleted?.Invoke();
+    }
+    private async Task CloseProgram(RunningProgram program)
+    {
+        var target = ProgramActionPolicy.DirectCloseTarget(program);
+        if (target == null) { ShowCloseChoices(program); return; }
+        if (await RunOperation("Закрытие…", token => processes.CloseAsync(target, token)))
+        { ReturnToList(); await RefreshAsync(quiet: true); }
+    }
     private async Task<bool> RunOperation(string status, Func<CancellationToken, Task<ProgramResult>> operation)
     {
         if (IsBusy || lifetime == null) return false;
@@ -481,7 +492,7 @@ public partial class ProgramsView : UserControl
         }
         if (RunningList.SelectedItem is not RunningProgram program) return;
         currentProgram = program; currentEntry = null;
-        ShowCloseChoices(program);
+        await CloseProgram(program);
     }
     public async Task CreateAsync()
     {
