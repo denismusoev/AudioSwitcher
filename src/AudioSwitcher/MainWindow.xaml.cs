@@ -52,7 +52,6 @@ public partial class MainWindow : Window
         interfaceSettings = new InterfaceSettings(Application.Current, UpdateAppearance);
         SizeChanged += (_, _) => UpdateAppearance();
         SourceInitialized += (_, _) => ApplyPreferredSize();
-        DpiChanged += (_, _) => ApplyPreferredSize();
         Loaded += (_, _) =>
         {
             navigation.Section = AppSection.Control;

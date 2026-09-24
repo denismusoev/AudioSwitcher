@@ -95,6 +95,8 @@ internal static class SelectedFixChecks
 
     public static int RunDpi()
     {
+        App? app = null;
+        MainWindow? window = null;
         try
         {
             var method = typeof(WindowPlacement).GetMethod("PreferredSizeInDips", BindingFlags.Static | BindingFlags.NonPublic);
@@ -120,14 +122,43 @@ internal static class SelectedFixChecks
             }
 
             Console.WriteLine("PASS WPF logical sizing only clamps windows that exceed the target work area");
-            Console.WriteLine("Passed: 1, Failed: 0, Skipped: 0");
+
+            app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            app.InitializeComponent();
+            window = new MainWindow(new ApplicationSettingsStore(Path.Combine(Path.GetTempPath(), "AudioSwitcher-dpi-settings.json")));
+            window.Show();
+            window.Width = 900;
+            window.Height = 506;
+            window.UpdateLayout();
+
+            var constructor = typeof(DpiChangedEventArgs).GetConstructor(
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                [typeof(DpiScale), typeof(DpiScale), typeof(RoutedEvent), typeof(object)],
+                modifiers: null);
+            Require(constructor != null, "WPF DPI event constructor is unavailable");
+            var change = (DpiChangedEventArgs)constructor!.Invoke(
+                [new DpiScale(1, 1), new DpiScale(1.5, 1.5), Window.DpiChangedEvent, window]);
+
+            window.RaiseEvent(change);
+            window.UpdateLayout();
+
+            Require(Math.Abs(window.Width - 900) < 0.01 && Math.Abs(window.Height - 506) < 0.01,
+                $"DPI notification reset the logical window size to {window.Width:0.##}x{window.Height:0.##} DIP");
+            Console.WriteLine("PASS DPI notification leaves logical window geometry under WPF control");
+            Console.WriteLine("Passed: 2, Failed: 0, Skipped: 0");
             return 0;
         }
         catch (Exception error)
         {
-            Console.WriteLine("FAIL WPF logical sizing only clamps windows that exceed the target work area: " + error.Message);
-            Console.WriteLine("Passed: 0, Failed: 1, Skipped: 0");
+            Console.WriteLine("FAIL selected DPI behavior: " + error.Message);
+            Console.WriteLine("Passed: 1, Failed: 1, Skipped: 0");
             return 1;
+        }
+        finally
+        {
+            window?.Close();
+            app?.Shutdown();
         }
     }
 
