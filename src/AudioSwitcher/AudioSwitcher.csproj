@@ -10,6 +10,6 @@
     <Description>Portable audio output, primary display and program manager</Description>
   </PropertyGroup>
   <ItemGroup>
-    <Resource Include="Assets\ps5-settings-background.png" />
+    <Resource Include="Assets\PS5\Background.png" />
   </ItemGroup>
 </Project>

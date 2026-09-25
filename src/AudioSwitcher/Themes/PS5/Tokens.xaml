@@ -1,0 +1,19 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+  <SolidColorBrush x:Key="Ps5WindowBackground" Color="#090C15"/>
+  <SolidColorBrush x:Key="Ps5PanelSurface" Color="#E612161E"/>
+  <SolidColorBrush x:Key="Ps5FocusedSurface" Color="#24FFFFFF"/>
+  <SolidColorBrush x:Key="Ps5HoverSurface" Color="#12FFFFFF"/>
+  <SolidColorBrush x:Key="Ps5PrimaryText" Color="#F5F6F8"/>
+  <SolidColorBrush x:Key="Ps5SecondaryText" Color="#B9BEC8"/>
+  <SolidColorBrush x:Key="Ps5Divider" Color="#20FFFFFF"/>
+  <SolidColorBrush x:Key="Ps5FocusOutline" Color="#F8FAFF"/>
+  <SolidColorBrush x:Key="Ps5FocusFlash" Color="#2EFFFFFF"/>
+  <SolidColorBrush x:Key="Ps5ErrorText" Color="#E7AAA6"/>
+
+  <Thickness x:Key="Ps5FocusThickness">3</Thickness>
+  <CornerRadius x:Key="Ps5FocusCornerRadius">2</CornerRadius>
+  <sys:Double x:Key="Ps5SettingsRowHeight">72</sys:Double>
+  <sys:Double x:Key="Ps5DrawerWidth">450</sys:Double>
+</ResourceDictionary>

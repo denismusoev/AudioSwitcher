@@ -36,10 +36,13 @@ internal static class FixedDesignChecks
                 && backgroundBitmap != null
                 && background.Stretch == Stretch.UniformToFill,
                 $"Application background is not the bundled full-bleed reference image: element={background?.GetType().Name ?? "null"}, source={background?.Source?.GetType().Name ?? "null"}, pixels={backgroundBitmap?.PixelWidth ?? 0}x{backgroundBitmap?.PixelHeight ?? 0}");
-            Require(background!.Effect is BlurEffect { Radius: 15 }
-                && background.Margin == new Thickness(-15),
-                "Application background does not use the requested 15-level blur with protected edges");
-            Console.WriteLine("PASS Application background uses the bundled full-bleed reference image");
+            Require(background!.Effect == null && background.Margin == new Thickness(0),
+                "PS5 settings background still uses runtime blur or overscan margins");
+            Require(app.Resources.MergedDictionaries.Count >= 3,
+                "PS5 design resources are not split into merged dictionaries");
+            foreach (string key in new[] { "Ps5PanelSurface", "Ps5PrimaryText", "Ps5SecondaryText", "Ps5FocusOutline", "Ps5FocusFlash" })
+                Require(app.TryFindResource(key) is Brush, $"Missing PS5 semantic brush: {key}");
+            Console.WriteLine("PASS Application uses the static PS5 settings background and semantic resources");
             Require(!VisualAncestors(appRoot).OfType<Viewbox>().Any(), "Interactive root is still scaled by a Viewbox");
             Require(Math.Abs(appRoot.ActualWidth - window.ActualWidth) < 1 && Math.Abs(appRoot.ActualHeight - window.ActualHeight) < 1,
                 $"Interactive root {appRoot.ActualWidth:0.##}x{appRoot.ActualHeight:0.##} does not fill window {window.ActualWidth:0.##}x{window.ActualHeight:0.##}");

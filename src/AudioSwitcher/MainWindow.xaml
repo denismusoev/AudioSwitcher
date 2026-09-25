@@ -78,9 +78,8 @@
     <Style x:Key="TvList" TargetType="ListBox"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="ItemContainerStyle" Value="{StaticResource SingleChoiceItem}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ScrollViewer Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer></ControlTemplate></Setter.Value></Setter></Style>
   </Window.Resources>
   <Grid x:Name="AppRoot" Background="{DynamicResource WindowSurface}" ClipToBounds="True" KeyboardNavigation.TabNavigation="Cycle">
-    <Image x:Name="DecorativeBackground" Source="/AudioSwitcher;component/Assets/ps5-settings-background.png" Stretch="UniformToFill" IsHitTestVisible="False" Margin="-15">
-      <Image.Effect><BlurEffect Radius="15" RenderingBias="Quality"/></Image.Effect>
-    </Image>
+    <Image x:Name="DecorativeBackground" Source="/AudioSwitcher;component/Assets/PS5/Background.png" Stretch="UniformToFill" IsHitTestVisible="False"/>
+    <Border Background="#28000000" IsHitTestVisible="False"/>
     <Border x:Name="WindowFrame" Panel.ZIndex="1" Background="Transparent" Padding="64,48,80,68" CornerRadius="0" BorderThickness="0">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="75"/><RowDefinition Height="*"/></Grid.RowDefinitions>

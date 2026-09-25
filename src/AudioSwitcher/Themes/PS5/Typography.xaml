@@ -1,0 +1,23 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <FontFamily x:Key="Ps5FontFamily">Segoe UI Variable Display, Segoe UI</FontFamily>
+
+  <Style x:Key="Ps5ScreenTitle" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource Ps5FontFamily}"/>
+    <Setter Property="FontSize" Value="36"/>
+    <Setter Property="FontWeight" Value="Light"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
+  </Style>
+  <Style x:Key="Ps5SettingLabel" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource Ps5FontFamily}"/>
+    <Setter Property="FontSize" Value="24"/>
+    <Setter Property="FontWeight" Value="Light"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
+  </Style>
+  <Style x:Key="Ps5SettingValue" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource Ps5FontFamily}"/>
+    <Setter Property="FontSize" Value="18"/>
+    <Setter Property="FontWeight" Value="Normal"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ps5SecondaryText}"/>
+  </Style>
+</ResourceDictionary>
