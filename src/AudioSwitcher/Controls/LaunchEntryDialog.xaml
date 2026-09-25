@@ -3,7 +3,7 @@
   <Style TargetType="TextBox" BasedOn="{StaticResource FormInput}"><EventSetter Event="GotKeyboardFocus" Handler="InputFocused"/></Style>
    <Style TargetType="Label" BasedOn="{StaticResource FormLabel}"><Setter Property="FontSize" Value="{DynamicResource Font28}"/><Setter Property="Foreground" Value="{DynamicResource MutedText}"/><Setter Property="Margin" Value="0,0,0,8"/></Style>
    <Style x:Key="Attribute" TargetType="Border" BasedOn="{StaticResource Ps5EditorAttribute}"/>
-   <Style x:Key="AttributeContent" TargetType="Border"><Setter Property="Padding" Value="16,12"/><Setter Property="BorderThickness" Value="0,0,0,1"/><Setter Property="BorderBrush" Value="{DynamicResource Line}"/><Style.Triggers><DataTrigger Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=Border}}" Value="True"><Setter Property="BorderBrush" Value="Transparent"/></DataTrigger></Style.Triggers></Style>
+   <Style x:Key="AttributeContent" TargetType="Border"><Setter Property="Padding" Value="16,12"/><Setter Property="BorderThickness" Value="0"/></Style>
  </UserControl.Resources>
   <Grid><Grid.RowDefinitions><RowDefinition Height="69"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
    <StackPanel><TextBlock x:Name="EditorTitle" Text="Добавить программу" Style="{StaticResource Ps5SettingLabel}"/><TextBlock Text="Каталог запуска" Style="{StaticResource Ps5SettingValue}" Margin="0,6,0,0"/></StackPanel>

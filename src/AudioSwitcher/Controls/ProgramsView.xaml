@@ -13,7 +13,7 @@
     <Grid.RowDefinitions><RowDefinition MinHeight="52" Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <StackPanel VerticalAlignment="Top"><TextBlock x:Name="ListTitle" Style="{StaticResource Ps5SettingLabel}"/><TextBlock x:Name="ListSubtitle" Margin="0,6,0,0" Style="{StaticResource Ps5SettingValue}" TextWrapping="Wrap" Visibility="Collapsed"/></StackPanel>
     <ListBox x:Name="RunningList" Grid.Row="1" Style="{StaticResource ProgramList}" Margin="0,1,0,0" ItemTemplate="{StaticResource RunningRow}" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Запущенные пользовательские приложения"/>
-    <ListBox x:Name="LaunchList" Grid.Row="1" Style="{StaticResource ProgramList}" Margin="0,14,0,0" Visibility="Collapsed" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Добавленные программы для запуска"/>
+    <ListBox x:Name="LaunchList" Grid.Row="1" Style="{StaticResource ProgramList}" Margin="0,1,0,0" Visibility="Collapsed" PreviewMouseLeftButtonDown="ListPress" PreviewMouseLeftButtonUp="ListClick" AutomationProperties.Name="Добавленные программы для запуска"/>
     <TextBlock x:Name="EmptyPrograms" Grid.Row="1" Margin="18,21,18,20" FontSize="{DynamicResource Font28}" TextWrapping="Wrap" Foreground="{DynamicResource MutedText}" IsHitTestVisible="False"/>
   </Grid>
   <StackPanel Visibility="Collapsed" Orientation="Horizontal">

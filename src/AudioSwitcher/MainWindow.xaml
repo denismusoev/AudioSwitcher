@@ -32,8 +32,7 @@
     <Border Background="#28000000" IsHitTestVisible="False"/>
     <Border x:Name="WindowFrame" Panel.ZIndex="1" Background="Transparent" Padding="64,48,80,68" CornerRadius="0" BorderThickness="0">
       <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="75"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-        <TextBlock Text="AudioSwitcher" Style="{StaticResource Ps5ScreenTitle}" VerticalAlignment="Top"/>
+        <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <Grid Grid.Row="1">
           <Grid.ColumnDefinitions><ColumnDefinition x:Name="SectionColumn" Width="320"/><ColumnDefinition x:Name="GapColumn" Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
           <Grid x:Name="SectionHeader" Grid.Column="0">
@@ -48,7 +47,6 @@
             <TextBlock Text="Быстрые действия" FontSize="{DynamicResource HeadingFont26}" FontWeight="350"/>
             <StackPanel Grid.Row="1" VerticalAlignment="Top">
               <Button x:Name="AudioControlCard" Style="{StaticResource TvCard}" Click="AudioCardClick" AutomationProperties.Name="Выбрать устройство звука"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock x:Name="AudioControlLabel" Text="Устройство звука" Style="{StaticResource Ps5SettingLabel}" VerticalAlignment="Center"/><TextBlock x:Name="AudioSummary" Grid.Column="1" Margin="24,0,0,0" Text="Загрузка…" Style="{StaticResource Ps5SettingValue}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="325"/></Grid></Button>
-              <Border x:Name="ControlRowDivider" Height="1" Background="{DynamicResource Line}" Margin="18,0" SnapsToDevicePixels="True"/>
               <Button x:Name="DisplayControlCard" Style="{StaticResource TvCard}" Click="DisplayCardClick" AutomationProperties.Name="Выбрать основной экран"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Основной экран" Style="{StaticResource Ps5SettingLabel}" VerticalAlignment="Center"/><TextBlock x:Name="DisplaySummary" Grid.Column="1" Margin="24,0,0,0" Text="Загрузка…" Style="{StaticResource Ps5SettingValue}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="325"/></Grid></Button>
             </StackPanel>
           </Grid>

@@ -2,7 +2,10 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
   <SolidColorBrush x:Key="Ps5WindowBackground" Color="#090C15"/>
-  <SolidColorBrush x:Key="Ps5PanelSurface" Color="#E612161E"/>
+  <LinearGradientBrush x:Key="Ps5PanelSurface" StartPoint="0.5,0" EndPoint="0.5,1">
+    <GradientStop Color="#F0343944" Offset="0"/>
+    <GradientStop Color="#F0242933" Offset="1"/>
+  </LinearGradientBrush>
   <SolidColorBrush x:Key="Ps5FocusedSurface" Color="#24FFFFFF"/>
   <SolidColorBrush x:Key="Ps5HoverSurface" Color="#12FFFFFF"/>
   <SolidColorBrush x:Key="Ps5PrimaryText" Color="#F5F6F8"/>

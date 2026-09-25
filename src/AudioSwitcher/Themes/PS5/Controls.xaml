@@ -6,8 +6,10 @@
     <Setter Property="BorderBrush">
       <Setter.Value>
         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-          <GradientStop Color="#70F8FAFF" Offset="0"/>
-          <GradientStop Color="#F8FAFF" Offset="1"/>
+          <GradientStop Color="#343B49" Offset="0"/>
+          <GradientStop Color="#F8FAFF" Offset="0.36"/>
+          <GradientStop Color="#AAB4C7" Offset="0.58"/>
+          <GradientStop Color="#242A35" Offset="1"/>
           <LinearGradientBrush.RelativeTransform>
             <RotateTransform CenterX="0.5" CenterY="0.5"/>
           </LinearGradientBrush.RelativeTransform>
@@ -90,6 +92,7 @@
     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
     <Setter Property="Padding" Value="18,8"/>
+    <Setter Property="Margin" Value="0,2"/>
     <Setter Property="MinHeight" Value="{StaticResource Ps5SettingsRowHeight}"/>
     <Setter Property="Cursor" Value="Hand"/>
     <Setter Property="Template">
@@ -181,6 +184,7 @@
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
     <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Margin" Value="0,2"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ToggleButton">
@@ -202,7 +206,6 @@
                           HorizontalAlignment="Right" Margin="2" Opacity="0"/>
                 </Border>
               </StackPanel>
-              <Border Height="1" Background="{DynamicResource Ps5Divider}" VerticalAlignment="Bottom" Grid.ColumnSpan="2"/>
             </Grid>
             <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
           </Grid>

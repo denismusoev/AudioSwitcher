@@ -30,6 +30,13 @@ internal static class FixedDesignChecks
             window.Show();
             var appRoot = (FrameworkElement)window.FindName("AppRoot");
             window.UpdateLayout();
+            var polishFailures = new List<string>();
+            if (VisualText(appRoot).Any(text => text == "AudioSwitcher"))
+                polishFailures.Add("the redundant AudioSwitcher logo is still visible");
+            var controlSurface = (FrameworkElement)window.FindName("ControlSurface");
+            double contentTop = controlSurface.TranslatePoint(new Point(), appRoot).Y;
+            if (contentTop > 110)
+                polishFailures.Add($"root content still starts too low at {contentTop:0.#} DIPs");
             var background = window.FindName("DecorativeBackground") as Image;
             var backgroundBitmap = background?.Source as BitmapSource;
             Require(background != null
@@ -100,8 +107,11 @@ internal static class FixedDesignChecks
             Require(cleanApplicationName?.Invoke(null, ["mspaint.exe"]) as string == "mspaint", "Technical executable suffix is visible");
 
             var programsView = (ProgramsView)window.FindName("Programs");
+            var runningList = (ListBox)programsView.FindName("RunningList");
             var launchList = (ListBox)programsView.FindName("LaunchList");
             Require(Grid.GetRow(launchList) == 1, "Launch catalogue can overlap its heading");
+            if (launchList.Margin.Top != runningList.Margin.Top)
+                polishFailures.Add($"Launch list starts at {launchList.Margin.Top:0.#} DIPs while Running starts at {runningList.Margin.Top:0.#}");
 
             var primaryCommand = (Button)window.FindName("PrimaryCommand");
             primaryCommand.ApplyTemplate();
@@ -115,6 +125,10 @@ internal static class FixedDesignChecks
             var sectionFrame = (Border)controlTab.Template.FindName("SelectionFrame", controlTab);
             RequireFocusFrame(sectionFrame, focusOutline, focusThickness, focusCorner, "Section");
             RequireAnimatedPs5Focus(controlTab, sectionFrame, "Section");
+            if (sectionFrame.BorderBrush is not LinearGradientBrush sectionGradient
+                || sectionGradient.GradientStops.Max(stop => PerceivedBrightness(stop.Color))
+                    - sectionGradient.GradientStops.Min(stop => PerceivedBrightness(stop.Color)) < 100)
+                polishFailures.Add("focus border gradient still lacks a clearly dark and bright sweep");
             RequirePixelAlignedVerticalEdges(sectionFrame, window, "Section");
             RaiseRightClick(window, controlTab);
             var programs = programsView;
@@ -131,13 +145,9 @@ internal static class FixedDesignChecks
             Call(window, "Execute", PadAction.Close);
 
             var display = (Button)window.FindName("DisplayControlCard");
-            var divider = window.FindName("ControlRowDivider") as Border ?? throw new Exception("Shared row divider missing");
-            var audioCenter = audio.TranslatePoint(new Point(0, audio.ActualHeight / 2), appRoot).Y;
-            var displayCenter = display.TranslatePoint(new Point(0, display.ActualHeight / 2), appRoot).Y;
-            var dividerCenter = divider.TranslatePoint(new Point(0, divider.ActualHeight / 2), appRoot).Y;
-            Require(Math.Abs((dividerCenter - audioCenter) - (displayCenter - dividerCenter)) < 0.6, "Control row divider is not centered");
             var lineColor = ((SolidColorBrush)app.FindResource("Line")).Color;
-            Require(VisualBorders((DependencyObject)window.FindName("ControlSurface")).Count(border => border.ActualHeight is > 0 and <= 1.5 && border.Background is SolidColorBrush brush && brush.Color == lineColor) == 1, "Control surface must contain exactly one separator");
+            if (VisualBorders(controlSurface).Any(border => border.ActualHeight is > 0 and <= 1.5 && border.Background is SolidColorBrush brush && brush.Color == lineColor))
+                polishFailures.Add("control rows still contain divider lines");
             Capture(window, "tv-targeted-control.png");
 
             Call(window, "SwitchSection", AppSection.Running);
@@ -165,6 +175,8 @@ internal static class FixedDesignChecks
                 Require(selectedRow.IsKeyboardFocused, "Moving in a section leaves focus on the list instead of the selected row");
                 var rowFrame = VisualChild<Border>(selectedRow) ?? throw new Exception("Selected row frame missing");
                 RequireFocusFrame(rowFrame, focusOutline, focusThickness, focusCorner, "List row");
+                if (VisualBorders(selectedRow).Any(border => border.ActualHeight is > 0 and <= 1.5))
+                    polishFailures.Add("list rows still contain divider lines");
                 RequirePixelAlignedVerticalEdges(rowFrame, window, "List row");
                 focusedRowColor = FocusColor(rowFrame.BorderBrush) ?? throw new Exception("Selected row outline missing");
                 focusedRowCorner = rowFrame.CornerRadius;
@@ -194,6 +206,8 @@ internal static class FixedDesignChecks
             Require(settingsToggle.IsKeyboardFocused, "Settings focus did not reach its toggle row");
             var settingsFrame = (Border)settingsToggle.Template.FindName("Row", settingsToggle);
             RequireFocusFrame(settingsFrame, focusOutline, focusThickness, focusCorner, "Settings");
+            if (VisualBorders(settingsToggle).Any(border => border.ActualHeight is > 0 and <= 1.5))
+                polishFailures.Add("settings toggle still contains a divider line");
             RequirePixelAlignedVerticalEdges(settingsFrame, window, "Settings");
             Call(window, "Execute", PadAction.Close);
             window.UpdateLayout();
@@ -201,13 +215,13 @@ internal static class FixedDesignChecks
             ((FrameworkElement)window.FindName("OverlayShade")).Visibility = Visibility.Visible;
             var picker = (Border)window.FindName("DevicePickerOverlay");
             picker.Visibility = Visibility.Visible;
-            Require(picker.Background is SolidColorBrush drawerBrush
-                && drawerBrush.Color == ((SolidColorBrush)app.FindResource("Ps5PanelSurface")).Color
-                && picker.RenderTransform is TranslateTransform,
-                "Device picker is not using the reusable PS5 drawer surface and transition transform");
+            if (picker.Background is not LinearGradientBrush drawerBrush
+                || drawerBrush.GradientStops.Average(stop => PerceivedBrightness(stop.Color)) < 40
+                || picker.RenderTransform is not TranslateTransform)
+                polishFailures.Add("modal drawer surface is still too dark or lacks the reusable transition");
             var modalBackdrop = (Border)window.FindName("ModalBackdrop");
-            Require(modalBackdrop.Background is SolidColorBrush dimBrush && dimBrush.Color.A >= 0xB0,
-                "Modal drawer backdrop is not sufficiently dimmed");
+            if (modalBackdrop.Background is not SolidColorBrush dimBrush || dimBrush.Color.A > 0x98)
+                polishFailures.Add("modal backdrop still dims the application too heavily");
             var devices = (ListBox)window.FindName("Devices");
             devices.ItemsSource = new[]
             {
@@ -229,6 +243,7 @@ internal static class FixedDesignChecks
             RequireFocusFrame(deviceFrame, focusOutline, focusThickness, focusCorner, "Device");
             Require(picker.ActualWidth is >= 440 and <= 460, $"Picker width is {picker.ActualWidth}");
             Capture(window, "tv-targeted-picker.png");
+            Require(polishFailures.Count == 0, "PS5 polish requirements failed:\n - " + string.Join("\n - ", polishFailures));
             Console.WriteLine("PASS Focus indicators use shared brush and geometry");
             Console.WriteLine("PASS Device picker focuses its initial and moved selection");
             Console.WriteLine("Passed: 3, Failed: 0");
@@ -604,6 +619,8 @@ internal static class FixedDesignChecks
         LinearGradientBrush gradient => gradient.GradientStops.LastOrDefault()?.Color,
         _ => null
     };
+
+    private static double PerceivedBrightness(Color color) => 0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B;
     private static void Capture(Window window, string name)
     {
         var frame = (FrameworkElement)window.FindName("AppRoot");
