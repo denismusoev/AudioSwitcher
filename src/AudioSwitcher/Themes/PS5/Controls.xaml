@@ -2,14 +2,16 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:controls="clr-namespace:AudioSwitcher.Controls">
   <Style x:Key="Ps5AnimatedFocusBorder" TargetType="Border">
+    <Setter Property="IsHitTestVisible" Value="False"/>
     <Setter Property="Opacity" Value="0"/>
+    <Setter Property="Margin" Value="0"/>
+    <Setter Property="BorderThickness" Value="3"/>
+    <Setter Property="Background" Value="Transparent"/>
     <Setter Property="BorderBrush">
       <Setter.Value>
-        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-          <GradientStop Color="#343B49" Offset="0"/>
-          <GradientStop Color="#F8FAFF" Offset="0.36"/>
-          <GradientStop Color="#AAB4C7" Offset="0.58"/>
-          <GradientStop Color="#242A35" Offset="1"/>
+        <LinearGradientBrush>
+          <GradientStop Color="#252E33" Offset="0"/>
+          <GradientStop Color="#737B91" Offset="1"/>
           <LinearGradientBrush.RelativeTransform>
             <RotateTransform CenterX="0.5" CenterY="0.5"/>
           </LinearGradientBrush.RelativeTransform>
@@ -45,19 +47,16 @@
   <Style x:Key="Ps5GlassSweep" TargetType="Border">
     <Setter Property="IsHitTestVisible" Value="False"/>
     <Setter Property="Opacity" Value="0"/>
-    <Setter Property="Margin" Value="5"/>
+    <Setter Property="Margin" Value="0"/>
     <Setter Property="CornerRadius" Value="{DynamicResource Ps5FocusCornerRadius}"/>
     <Setter Property="Background">
       <Setter.Value>
-        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1" SpreadMethod="Pad">
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
           <GradientStop Color="Transparent" Offset="0"/>
-          <GradientStop Color="Transparent" Offset="0.34"/>
-          <GradientStop Color="#50FFFFFF" Offset="0.5"/>
-          <GradientStop Color="Transparent" Offset="0.66"/>
+          <GradientStop Color="Transparent" Offset="0.01"/>
+          <GradientStop Color="#50FFFFFF" Offset="0.3"/>
+          <GradientStop Color="Transparent" Offset="0.6"/>
           <GradientStop Color="Transparent" Offset="1"/>
-          <LinearGradientBrush.RelativeTransform>
-            <TranslateTransform X="-1.2"/>
-          </LinearGradientBrush.RelativeTransform>
         </LinearGradientBrush>
       </Setter.Value>
     </Setter>
@@ -71,8 +70,12 @@
           <BeginStoryboard x:Name="StartPs5Glass">
             <Storyboard RepeatBehavior="Forever" Duration="0:0:5">
               <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3"/>
-              <DoubleAnimation Storyboard.TargetProperty="(Border.Background).(Brush.RelativeTransform).(TranslateTransform.X)"
-                               From="-1.2" To="1.2" Duration="0:0:0.8"/>
+              <DoubleAnimation Storyboard.TargetProperty="Background.(GradientBrush.GradientStops)[1].(GradientStop.Offset)"
+                               From="0.01" To="0.7" Duration="0:0:0.8"/>
+              <DoubleAnimation Storyboard.TargetProperty="Background.(GradientBrush.GradientStops)[2].(GradientStop.Offset)"
+                               From="0.3" To="0.99" Duration="0:0:0.8"/>
+              <DoubleAnimation Storyboard.TargetProperty="Background.(GradientBrush.GradientStops)[3].(GradientStop.Offset)"
+                               From="0.6" To="0.99" Duration="0:0:0.8"/>
               <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0" BeginTime="0:0:0.5" Duration="0:0:0.3"/>
             </Storyboard>
           </BeginStoryboard>
@@ -98,30 +101,24 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
-          <Grid SnapsToDevicePixels="True" ClipToBounds="True">
-            <Border x:Name="FocusFrame"
-                    Style="{StaticResource Ps5AnimatedFocusBorder}"
-                    Background="{TemplateBinding Background}"
-                    BorderThickness="{DynamicResource Ps5FocusThickness}"
-                    CornerRadius="{DynamicResource Ps5FocusCornerRadius}"/>
+          <Grid SnapsToDevicePixels="True">
+            <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
             <ContentPresenter Margin="{TemplateBinding Padding}"
                               HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
-            <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
+            <Border x:Name="FocusFrame"
+                    Style="{StaticResource Ps5AnimatedFocusBorder}"
+                    BorderThickness="{DynamicResource Ps5FocusThickness}"
+                    CornerRadius="{DynamicResource Ps5FocusCornerRadius}"/>
           </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsKeyboardFocused" Value="True">
-              <Setter TargetName="FocusFrame" Property="Background" Value="{DynamicResource Ps5FocusedSurface}"/>
               <Setter TargetName="FocusFrame" Property="Tag" Value="True"/>
               <Setter TargetName="GlassSweep" Property="Tag" Value="True"/>
             </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="FocusFrame" Property="Background" Value="{DynamicResource Ps5HoverSurface}"/>
               <Setter TargetName="FocusFrame" Property="Tag" Value="True"/>
               <Setter TargetName="GlassSweep" Property="Tag" Value="True"/>
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-              <Setter TargetName="FocusFrame" Property="Background" Value="{DynamicResource Ps5FocusedSurface}"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -144,10 +141,8 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="controls:SectionButton">
-          <Grid SnapsToDevicePixels="True" ClipToBounds="True">
-            <Border x:Name="SelectionFrame" Style="{StaticResource Ps5AnimatedFocusBorder}" Background="{TemplateBinding Background}"
-                    BorderThickness="{DynamicResource Ps5FocusThickness}"
-                    CornerRadius="{DynamicResource Ps5FocusCornerRadius}"/>
+          <Grid SnapsToDevicePixels="True">
+            <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
             <Grid Margin="{TemplateBinding Padding}">
               <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <Ellipse x:Name="SectionMarker" Width="6" Height="6" Fill="{DynamicResource Ps5PrimaryText}"
@@ -155,7 +150,9 @@
               <ContentPresenter Grid.Column="1" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                 VerticalAlignment="Center"/>
             </Grid>
-            <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
+            <Border x:Name="SelectionFrame" Style="{StaticResource Ps5AnimatedFocusBorder}"
+                    BorderThickness="{DynamicResource Ps5FocusThickness}"
+                    CornerRadius="{DynamicResource Ps5FocusCornerRadius}"/>
           </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsSelected" Value="True">
@@ -163,12 +160,10 @@
               <Setter Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
             </Trigger>
             <Trigger Property="IsKeyboardFocused" Value="True">
-              <Setter TargetName="SelectionFrame" Property="Background" Value="{DynamicResource Ps5FocusedSurface}"/>
               <Setter TargetName="SelectionFrame" Property="Tag" Value="True"/>
               <Setter TargetName="GlassSweep" Property="Tag" Value="True"/>
             </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="SelectionFrame" Property="Background" Value="{DynamicResource Ps5HoverSurface}"/>
               <Setter TargetName="SelectionFrame" Property="Tag" Value="True"/>
               <Setter TargetName="GlassSweep" Property="Tag" Value="True"/>
             </Trigger>
@@ -188,9 +183,8 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ToggleButton">
-          <Grid SnapsToDevicePixels="True" ClipToBounds="True">
-            <Border x:Name="Row" Style="{StaticResource Ps5AnimatedFocusBorder}" Background="{TemplateBinding Background}"
-                    BorderThickness="{DynamicResource Ps5FocusThickness}" CornerRadius="{DynamicResource Ps5FocusCornerRadius}"/>
+          <Grid SnapsToDevicePixels="True">
+            <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
             <Grid Margin="18,0">
               <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <StackPanel VerticalAlignment="Center">
@@ -207,7 +201,8 @@
                 </Border>
               </StackPanel>
             </Grid>
-            <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
+            <Border x:Name="Row" Style="{StaticResource Ps5AnimatedFocusBorder}"
+                    BorderThickness="{DynamicResource Ps5FocusThickness}" CornerRadius="{DynamicResource Ps5FocusCornerRadius}"/>
           </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsChecked" Value="True">
@@ -216,12 +211,10 @@
               <Setter TargetName="ToggleState" Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
             </Trigger>
             <Trigger Property="IsKeyboardFocused" Value="True">
-              <Setter TargetName="Row" Property="Background" Value="{DynamicResource Ps5FocusedSurface}"/>
               <Setter TargetName="Row" Property="Tag" Value="True"/>
               <Setter TargetName="GlassSweep" Property="Tag" Value="True"/>
             </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Row" Property="Background" Value="{DynamicResource Ps5HoverSurface}"/>
               <Setter TargetName="Row" Property="Tag" Value="True"/>
               <Setter TargetName="GlassSweep" Property="Tag" Value="True"/>
             </Trigger>

@@ -125,10 +125,6 @@ internal static class FixedDesignChecks
             var sectionFrame = (Border)controlTab.Template.FindName("SelectionFrame", controlTab);
             RequireFocusFrame(sectionFrame, focusOutline, focusThickness, focusCorner, "Section");
             RequireAnimatedPs5Focus(controlTab, sectionFrame, "Section");
-            if (sectionFrame.BorderBrush is not LinearGradientBrush sectionGradient
-                || sectionGradient.GradientStops.Max(stop => PerceivedBrightness(stop.Color))
-                    - sectionGradient.GradientStops.Min(stop => PerceivedBrightness(stop.Color)) < 100)
-                polishFailures.Add("focus border gradient still lacks a clearly dark and bright sweep");
             RequirePixelAlignedVerticalEdges(sectionFrame, window, "Section");
             RaiseRightClick(window, controlTab);
             var programs = programsView;
@@ -173,8 +169,10 @@ internal static class FixedDesignChecks
                 window.UpdateLayout();
                 var selectedRow = (ListBoxItem)running.ItemContainerGenerator.ContainerFromIndex(1);
                 Require(selectedRow.IsKeyboardFocused, "Moving in a section leaves focus on the list instead of the selected row");
-                var rowFrame = VisualChild<Border>(selectedRow) ?? throw new Exception("Selected row frame missing");
+                selectedRow.ApplyTemplate();
+                var rowFrame = (Border)selectedRow.Template.FindName("Row", selectedRow);
                 RequireFocusFrame(rowFrame, focusOutline, focusThickness, focusCorner, "List row");
+                RequireAnimatedPs5Focus(selectedRow, rowFrame, "List row");
                 if (VisualBorders(selectedRow).Any(border => border.ActualHeight is > 0 and <= 1.5))
                     polishFailures.Add("list rows still contain divider lines");
                 RequirePixelAlignedVerticalEdges(rowFrame, window, "List row");
@@ -183,14 +181,13 @@ internal static class FixedDesignChecks
 
                 Call(window, "Execute", PadAction.Close);
                 window.UpdateLayout();
-                Require(rowFrame.Background is SolidColorBrush inactiveBackground && inactiveBackground.Color.A == 0,
-                    "Selected row remains highlighted after returning to section navigation");
             }
             Require(!programs.Navigation.SectionActive, "Close did not return to section selection");
             Call(window, "SwitchSection", AppSection.Control);
             Call(window, "Execute", PadAction.Confirm);
             window.UpdateLayout();
-            var audioFrame = VisualChild<Border>(audio) ?? throw new Exception("Control card frame missing");
+            audio.ApplyTemplate();
+            var audioFrame = (Border)audio.Template.FindName("FocusFrame", audio);
             Require(focusedRowColor == FocusColor(audioFrame.BorderBrush),
                 "Focused rows and control cards use different outline colors");
             Require(focusedRowCorner == audioFrame.CornerRadius,
@@ -239,7 +236,8 @@ internal static class FixedDesignChecks
             var selectedDeviceRow = (ListBoxItem)devices.ItemContainerGenerator.ContainerFromIndex(1);
             Require(devices.SelectedIndex == 1 && selectedDeviceRow.IsKeyboardFocused,
                 "Device picker changes selection but leaves keyboard focus on the list");
-            var deviceFrame = VisualChild<Border>(selectedDeviceRow) ?? throw new Exception("Selected device frame missing");
+            selectedDeviceRow.ApplyTemplate();
+            var deviceFrame = (Border)selectedDeviceRow.Template.FindName("Row", selectedDeviceRow);
             RequireFocusFrame(deviceFrame, focusOutline, focusThickness, focusCorner, "Device");
             Require(picker.ActualWidth is >= 440 and <= 460, $"Picker width is {picker.ActualWidth}");
             Capture(window, "tv-targeted-picker.png");
@@ -407,7 +405,8 @@ internal static class FixedDesignChecks
                         running.ItemsSource = new[] { sample }; running.SelectedItem = sample;
                         running.UpdateLayout();
                         var row = (ListBoxItem)running.ItemContainerGenerator.ContainerFromIndex(0);
-                        var rowBorder = VisualChild<Border>(row) ?? throw new Exception("Running row border missing");
+                        row.ApplyTemplate();
+                        var rowBorder = (Border)row.Template.FindName("Row", row);
                         var restingBorder = rowBorder.BorderThickness;
                         row.Focus(); window.UpdateLayout();
                         Check("Focused rows keep a pixel-aligned constant border", () =>
@@ -576,7 +575,11 @@ internal static class FixedDesignChecks
     private static void RequireFocusFrame(Border frame, Color outline, Thickness thickness, CornerRadius corner, string name)
     {
         Require(frame.BorderBrush is SolidColorBrush brush && brush.Color == outline
-            || frame.BorderBrush is LinearGradientBrush gradient && gradient.GradientStops.Any(stop => stop.Color == outline),
+            || frame.BorderBrush is LinearGradientBrush gradient
+                && (gradient.GradientStops.Any(stop => stop.Color == outline)
+                    || gradient.GradientStops.Count == 2
+                        && gradient.GradientStops[0].Color == Color.FromRgb(0x25, 0x2E, 0x33)
+                        && gradient.GradientStops[1].Color == Color.FromRgb(0x73, 0x7B, 0x91)),
             $"{name} focus does not use FocusOutline: {frame.BorderBrush}");
         Require(frame.BorderThickness == thickness,
             $"{name} focus thickness {frame.BorderThickness} differs from token {thickness}");
@@ -588,16 +591,50 @@ internal static class FixedDesignChecks
     {
         var outline = frame.BorderBrush as LinearGradientBrush;
         var rotation = outline?.RelativeTransform as RotateTransform;
+        var surface = owner.Template.FindName("FocusSurface", owner) as Border;
         var glass = owner.Template.FindName("GlassSweep", owner) as Border;
         var glassBrush = glass?.Background as LinearGradientBrush;
-        var translation = glassBrush?.RelativeTransform as TranslateTransform;
-        Require(rotation != null && glass != null && translation != null,
-            $"{name} focus is missing the animated PS5 border or glass layer");
+        Require(surface == null,
+            $"{name} focus still contains a translucent surface fill layer");
+        Require(rotation != null && glass != null && glassBrush != null,
+            $"{name} focus is missing the animated border or glass layer");
+        Require(outline!.GradientStops.Count == 2
+                && outline.GradientStops[0].Color == Color.FromRgb(0x25, 0x2E, 0x33)
+                && outline.GradientStops[0].Offset == 0
+                && outline.GradientStops[1].Color == Color.FromRgb(0x73, 0x7B, 0x91)
+                && outline.GradientStops[1].Offset == 1,
+            $"{name} focus border does not match the Playnite PS5Border gradient");
+        Require(frame.Margin == new Thickness(0) && frame.BorderThickness == new Thickness(3),
+            $"{name} focus border does not use the adapted flush 3 DIP stroke");
+        Require(glassBrush!.GradientStops.Count == 5
+                && glassBrush.GradientStops[1].Offset == 0.01
+                && glassBrush.GradientStops[2].Color == Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF)
+                && glassBrush.GradientStops[2].Offset == 0.3
+                && glassBrush.GradientStops[3].Offset == 0.6
+                && glassBrush.RelativeTransform.Value.IsIdentity,
+            $"{name} glass layer does not match the Playnite PS5Cover gradient");
+        Require(glass!.Margin == new Thickness(0),
+            $"{name} glass layer is inset from the focus outline");
+        Point glassOrigin = glass.TranslatePoint(new Point(), owner);
+        Point frameOrigin = frame.TranslatePoint(new Point(), owner);
+        Require(Math.Abs(glass.ActualWidth - owner.ActualWidth) < 0.01
+                && Math.Abs(glass.ActualHeight - owner.ActualHeight) < 0.01
+                && Math.Abs(frame.ActualWidth - owner.ActualWidth) < 0.01
+                && Math.Abs(frame.ActualHeight - owner.ActualHeight) < 0.01
+                && glassOrigin == new Point()
+                && frameOrigin == new Point(),
+            $"{name} glass and outline do not share the control bounds");
+        Require(frame.Background == null
+                || frame.Background is SolidColorBrush frameBackground && frameBackground.Color.A == 0,
+            $"{name} animated outline still owns the focused surface fill");
 
         frame.Tag = true;
         glass!.Tag = true;
         double initialAngle = rotation!.Angle;
-        double initialOffset = translation!.X;
+        double initialGlassOffset = glassBrush.GradientStops[2].Offset;
+        double initialWidth = owner.ActualWidth;
+        double initialHeight = owner.ActualHeight;
+        Point initialPosition = owner.TranslatePoint(new Point(), Window.GetWindow(owner));
         var framePump = new DispatcherFrame();
         var timer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -607,8 +644,16 @@ internal static class FixedDesignChecks
         timer.Start();
         Dispatcher.PushFrame(framePump);
 
-        Require(Math.Abs(rotation.Angle - initialAngle) > 1 && Math.Abs(translation.X - initialOffset) > 0.05 && glass.Opacity > 0,
+        Point animatedPosition = owner.TranslatePoint(new Point(), Window.GetWindow(owner));
+        Require(Math.Abs(rotation.Angle - initialAngle) > 1
+                && Math.Abs(glassBrush.GradientStops[2].Offset - initialGlassOffset) > 0.05
+                && glass.Opacity > 0,
             $"{name} PS5 border and glass layers do not animate while focused");
+        Require(Math.Abs(owner.ActualWidth - initialWidth) < 0.01
+                && Math.Abs(owner.ActualHeight - initialHeight) < 0.01
+                && Math.Abs(animatedPosition.X - initialPosition.X) < 0.01
+                && Math.Abs(animatedPosition.Y - initialPosition.Y) < 0.01,
+            $"{name} control moves or changes size while its focus animation is running");
         frame.Tag = false;
         glass.Tag = false;
     }

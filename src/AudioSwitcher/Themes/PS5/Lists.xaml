@@ -13,27 +13,24 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ListBoxItem">
-          <Grid SnapsToDevicePixels="True" ClipToBounds="True">
-            <Border x:Name="Row" Style="{StaticResource Ps5AnimatedFocusBorder}" Background="Transparent"
-                    BorderThickness="{DynamicResource Ps5FocusThickness}" CornerRadius="{DynamicResource Ps5FocusCornerRadius}"/>
+          <Grid SnapsToDevicePixels="True">
+            <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
             <ContentPresenter Margin="{TemplateBinding Padding}"
                               HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
-            <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
+            <Border x:Name="Row" Style="{StaticResource Ps5AnimatedFocusBorder}"
+                    BorderThickness="{DynamicResource Ps5FocusThickness}" CornerRadius="{DynamicResource Ps5FocusCornerRadius}"/>
           </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-              <Setter TargetName="Row" Property="Background" Value="{DynamicResource Ps5FocusedSurface}"/>
               <Setter Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
               <Setter TargetName="Row" Property="Tag" Value="True"/>
               <Setter TargetName="GlassSweep" Property="Tag" Value="True"/>
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
-              <Setter TargetName="Row" Property="Background" Value="{DynamicResource Ps5FocusedSurface}"/>
               <Setter Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
             </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Row" Property="Background" Value="{DynamicResource Ps5HoverSurface}"/>
               <Setter TargetName="Row" Property="Tag" Value="True"/>
               <Setter TargetName="GlassSweep" Property="Tag" Value="True"/>
             </Trigger>
