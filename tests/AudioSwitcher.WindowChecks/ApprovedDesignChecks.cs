@@ -111,16 +111,16 @@ internal static class ApprovedDesignChecks
                             "Editor fields do not share aligned rows");
                     });
 
-                    Check("Launch root has no subtitle and main pages use the compact header gap", () =>
+                    Check("Launch root has no subtitle and main pages use the menu-height header band", () =>
                     {
                         var controlSurface = (Grid)window.FindName("ControlSurface");
-                        Require(Math.Abs(controlSurface.RowDefinitions[0].MinHeight - 52) < 0.01,
+                        Require(Math.Abs(controlSurface.RowDefinitions[0].MinHeight - 80) < 0.01,
                             $"Control header remains {controlSurface.RowDefinitions[0].MinHeight}");
                         Call(window, "SwitchSection", AppSection.Launch);
                         var programs = (ProgramsView)window.FindName("Programs");
                         var listsSurface = (Grid)programs.FindName("ListsSurface");
                         var subtitle = (TextBlock)programs.FindName("ListSubtitle");
-                        Require(Math.Abs(listsSurface.RowDefinitions[0].MinHeight - 52) < 0.01,
+                        Require(Math.Abs(listsSurface.RowDefinitions[0].MinHeight - 80) < 0.01,
                             $"Program-list header remains {listsSurface.RowDefinitions[0].MinHeight}");
                         Require(subtitle.Visibility == Visibility.Collapsed && string.IsNullOrEmpty(subtitle.Text),
                             $"Launch subtitle is still visible: '{subtitle.Text}'");

@@ -14,6 +14,11 @@
     <Setter Property="FontWeight" Value="Light"/>
     <Setter Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
   </Style>
+  <Style x:Key="Ps5PageTitle" TargetType="TextBlock" BasedOn="{StaticResource Ps5SettingLabel}">
+    <Setter Property="FontSize" Value="{DynamicResource HeadingFont26}"/>
+    <Setter Property="FontWeight" Value="350"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
   <Style x:Key="Ps5SettingValue" TargetType="TextBlock">
     <Setter Property="FontFamily" Value="{StaticResource Ps5FontFamily}"/>
     <Setter Property="FontSize" Value="18"/>

@@ -99,7 +99,7 @@ internal static class FixedDesignChecks
             var settingsSurface = (Border)window.FindName("SettingsSurface");
             var settingsGrid = (Grid)settingsSurface.Child;
             var settingsText = VisualText(settingsSurface).ToArray();
-            Require(settingsGrid.RowDefinitions[0].MinHeight == 52,
+            Require(settingsGrid.RowDefinitions[0].MinHeight == 80,
                 "Settings title spacing does not match the other sections");
             Require(!settingsText.Contains("При переносе уже запущенного приложения")
                 && settingsText.Contains("Для уже запущенных приложений")

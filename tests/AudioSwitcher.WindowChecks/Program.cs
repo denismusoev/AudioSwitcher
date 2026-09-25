@@ -19,6 +19,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--page-layout")) return PageLayoutChecks.Run();
         if (args.Contains("--selected-dpi")) return SelectedFixChecks.RunDpi();
         if (args.Contains("--selection-navigation")) return SelectedFixChecks.RunSelectionNavigation();
         if (args.Contains("--selected-fixes")) return SelectedFixChecks.Run();

@@ -87,7 +87,7 @@ public partial class MainWindow : Window
         FooterSurface.Margin = compact ? new Thickness(32, 0, 32, 16) : new Thickness(64, 0, 80, 20);
         SettingsSurface.Width = compact ? double.NaN : 840;
         SettingsSurface.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        SettingsSurface.Margin = compact ? new Thickness(304, 96, 32, 76) : new Thickness(432, 123, 0, 86);
+        SettingsSurface.Margin = compact ? new Thickness(304, 76, 32, 76) : new Thickness(432, 92, 0, 86);
         DevicePickerOverlay.Width = Math.Min(450, Math.Max(280, ActualWidth - 64));
         DevicePickerOverlay.Margin = compact ? new Thickness(0, 32, 32, 76) : new Thickness(0, 40, 40, 86);
         DeleteConfirmationOverlay.Width = DevicePickerOverlay.Width;
