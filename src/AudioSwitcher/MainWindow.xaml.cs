@@ -117,6 +117,8 @@ public partial class MainWindow : Window
         else if (navigation.Section == AppSection.Running) await Programs.RefreshAsync(quiet: true);
     }
 
+    public Task SynchronizeGamesAsync(bool quiet = false) => Programs.SynchronizeGamesAsync(quiet);
+
     private async Task RefreshControlAsync(bool quiet = false)
     {
         if (controlRefreshing || closed) return;
@@ -218,7 +220,9 @@ public partial class MainWindow : Window
         PrimaryCommand.Content = overlay == OverlayMode.Settings ? "переключить" : overlay == OverlayMode.Error ? "закрыть" : !sectionActive ? "открыть" : editing ? "поле" : navigation.Section == AppSection.Running && !panel ? "на экран" : navigation.Section == AppSection.Launch && !panel ? "запустить" : "выбрать";
         SecondaryCommand.Content = editing ? "удалить" : navigation.Section == AppSection.Running ? "закрыть" : "изменить";
         CreateCommand.Content = editing ? "сохранить" : "добавить";
-        SecondaryCommand.Visibility = overlay == OverlayMode.None && sectionActive && (editing ? Programs.CanDeleteEditing : !panel && navigation.Section != AppSection.Control) ? Visibility.Visible : Visibility.Collapsed;
+        SecondaryCommand.Visibility = overlay == OverlayMode.None && sectionActive && (editing ? Programs.CanDeleteEditing
+            : !panel && (navigation.Section == AppSection.Running || navigation.Section == AppSection.Launch && Programs.CanEditSelectedLaunchEntry))
+            ? Visibility.Visible : Visibility.Collapsed;
         CreateCommand.Visibility = overlay == OverlayMode.None && sectionActive && (editing || !panel && navigation.Section == AppSection.Launch) ? Visibility.Visible : Visibility.Collapsed;
         SettingsCommand.Visibility = overlay == OverlayMode.None && !panel ? Visibility.Visible : Visibility.Collapsed;
         BackCommand.Content = overlay == OverlayMode.None && !sectionActive ? "закрыть" : "назад";
@@ -517,6 +521,12 @@ public partial class MainWindow : Window
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.F5 && overlay == OverlayMode.None && !Programs.Editing)
+        {
+            _ = Programs.SynchronizeGamesAsync();
+            e.Handled = true;
+            return;
+        }
         if (Programs.Editing) return;
         var action = e.Key switch
         {

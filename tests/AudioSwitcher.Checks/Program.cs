@@ -77,6 +77,13 @@ Check("A single program window closes directly while multiple windows require a 
     Equal(first, ProgramActionPolicy.DirectCloseTarget(new(first.Process, "Game", [first])));
     Equal<WindowTarget?>(null, ProgramActionPolicy.DirectCloseTarget(new(first.Process, "Game", [first, second])));
 });
+Check("Only manual launch entries can be edited", () =>
+{
+    var manualEntry = new LaunchEntry(Guid.NewGuid(), "Manual", LaunchKind.Executable, @"C:\manual.exe");
+    var gameEntry = manualEntry with { Source = LaunchEntrySource.GameManifest, SourceKey = @"E:\Games\Game" };
+    Equal(true, ProgramActionPolicy.CanEditLaunchEntry(manualEntry));
+    Equal(false, ProgramActionPolicy.CanEditLaunchEntry(gameEntry));
+});
 Check("Up and down wrap through the three main sections", () => {
     var navigation = new NavigationState();
     Equal(NavigationTransition.SectionChanged, navigation.Navigate(PadAction.Down)); Equal(AppSection.Running, navigation.Section);

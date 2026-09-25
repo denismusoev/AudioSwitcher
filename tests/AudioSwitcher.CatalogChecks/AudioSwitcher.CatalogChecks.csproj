@@ -3,6 +3,8 @@
   <ItemGroup>
     <Compile Include="../../src/AudioSwitcher/Core/LaunchModels.cs" Link="Core/LaunchModels.cs" />
     <Compile Include="../../src/AudioSwitcher/Platform/LaunchCatalogStore.cs" Link="Platform/LaunchCatalogStore.cs" />
+    <Compile Include="../../src/AudioSwitcher/Platform/GameManifestScanner.cs" Link="Platform/GameManifestScanner.cs" />
+    <Compile Include="../../src/AudioSwitcher/Platform/GameCatalogSynchronizer.cs" Link="Platform/GameCatalogSynchronizer.cs" />
     <Compile Include="../../src/AudioSwitcher/Platform/ProgramLaunchService.cs" Link="Platform/ProgramLaunchService.cs" />
   </ItemGroup>
 </Project>

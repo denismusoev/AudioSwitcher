@@ -75,6 +75,32 @@ internal static class SelectedFixChecks
                         Require(actions.SelectedIndex == -1, "The internal page kept its selection after exit");
                         Require(list.SelectedIndex == 1, $"Back restored row {list.SelectedIndex} instead of the invoking row");
                     });
+
+                    await Check("Manifest games show their source and hide the edit command", () =>
+                    {
+                        Call(window, "Execute", PadAction.Left);
+                        Call(window, "SwitchSection", AppSection.Launch);
+                        Call(window, "Execute", PadAction.Right);
+                        var manual = new LaunchEntry(Guid.NewGuid(), "Manual", LaunchKind.Executable, @"C:\manual.exe");
+                        var game = new LaunchEntry(Guid.NewGuid(), "Game", LaunchKind.Executable, @"E:\Games\Game\game.exe", "", @"E:\Games\Game",
+                            LaunchEntrySource.GameManifest, @"E:\Games\Game");
+                        typeof(ProgramsView).GetField("catalog", BindingFlags.Instance | BindingFlags.NonPublic)!
+                            .SetValue(programs, new LaunchCatalogLoad(new LaunchCatalog(1, [manual, game]), true, null));
+                        Call(programs, "ShowCatalog");
+                        var launchList = (ListBox)programs.FindName("LaunchList");
+                        var secondary = (Button)window.FindName("SecondaryCommand");
+
+                        launchList.SelectedIndex = 1;
+                        Call(window, "UpdateChrome");
+                        Require(secondary.Visibility == Visibility.Collapsed, "X edit command remained visible for a manifest game");
+                        var details = (string)launchList.Items[1].GetType().GetProperty("DisplayDetails")!.GetValue(launchList.Items[1])!;
+                        Require(details == @"Игра · E:\Games\Game\game.exe", "Manifest game row has the wrong source label");
+
+                        launchList.SelectedIndex = 0;
+                        Call(window, "UpdateChrome");
+                        Require(secondary.Visibility == Visibility.Visible, "X edit command disappeared for a manual entry");
+                        return Task.CompletedTask;
+                    });
                 }
                 finally
                 {

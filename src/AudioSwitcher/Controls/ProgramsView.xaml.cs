@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -13,13 +14,14 @@ public partial class ProgramsView : UserControl
     private sealed record CatalogRow(LaunchEntry Entry)
     {
         public string DisplayName => Entry.Name;
-        public string DisplayDetails => (Entry.Kind == LaunchKind.Executable ? "Программа" : "Ярлык") + " · " + Entry.Target;
+        public string DisplayDetails => (Entry.Source == LaunchEntrySource.GameManifest ? "Игра" : Entry.Kind == LaunchKind.Executable ? "Программа" : "Ярлык") + " · " + Entry.Target;
     }
     private readonly ProgramWindowService windows = new();
     private readonly ProgramWindowMover mover = new();
     private readonly ProgramProcessService processes = new();
     private readonly ProgramLaunchCoordinator launchCoordinator = new();
     private readonly LaunchCatalogStore store;
+    private readonly GameCatalogSynchronizer gameSynchronizer;
     private LaunchCatalogLoad catalog = new(new(1, []), true, null);
     private CancellationTokenSource? lifetime;
     private bool operating, editorOpen;
@@ -35,7 +37,8 @@ public partial class ProgramsView : UserControl
     public NavigationState Navigation { get; } = new();
     public bool IsBusy => operating || Editor?.IsSaving == true;
     public bool Editing => editorOpen;
-    public bool CanDeleteEditing => Editing && currentEntry != null && Editor?.IsSaving != true;
+    public bool CanDeleteEditing => Editing && currentEntry != null && ProgramActionPolicy.CanEditLaunchEntry(currentEntry) && Editor?.IsSaving != true;
+    public bool CanEditSelectedLaunchEntry => LaunchList.SelectedItem is CatalogRow row && ProgramActionPolicy.CanEditLaunchEntry(row.Entry);
     public string DetailsText => PanelTitle.Text + "\n\n" + PanelDescription.Text + (PanelFeedback.Visibility == Visibility.Visible ? "\n\n" + PanelFeedback.Text : "");
     public bool InPanel => editorOpen || Navigation.Panel != ProgramPanel.List;
     public string ActionHint => IsBusy ? "Подождите" : Editing ? "Сохранить" : InPanel ? "Выбрать" : "Действия";
@@ -46,9 +49,11 @@ public partial class ProgramsView : UserControl
     public WindowMoveBehavior MoveBehavior { get; set; } = WindowMoveBehavior.KeepUtilityFocused;
 
     public ProgramsView() : this(new LaunchCatalogStore()) { }
-    public ProgramsView(LaunchCatalogStore store)
+    public ProgramsView(LaunchCatalogStore store, GameCatalogSynchronizer? gameSynchronizer = null)
     {
-        this.store = store; InitializeComponent();
+        this.store = store;
+        this.gameSynchronizer = gameSynchronizer ?? new(store, new GameManifestScanner());
+        InitializeComponent();
 
     }
     private void ClosePanel()
@@ -83,6 +88,25 @@ public partial class ProgramsView : UserControl
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (active == lifetime) Notify("Не удалось загрузить приложения", ex.Message); }
         finally { if (refreshingGeneration == generation) refreshingGeneration = -1; }
+    }
+    public async Task SynchronizeGamesAsync(bool quiet = false)
+    {
+        Guid? selected = (LaunchList.SelectedItem as CatalogRow)?.Entry.Id;
+        try
+        {
+            var result = await Task.Run(gameSynchronizer.Synchronize);
+            if (result == null) return;
+            catalog = result;
+            ShowCatalog(selected);
+            UpdateEmpty();
+            ContextChanged?.Invoke();
+            if (!quiet && result.Error == null) Notify("Готово");
+            else if (!quiet && result.Error != null) Notify("Каталог недоступен. Можно сохранить копию и сбросить", result.Error);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            if (!quiet) Notify("Не удалось обновить каталог игр", error.Message);
+        }
     }
     private static bool CanStartRefresh(int generation, int refreshingGeneration) => generation != refreshingGeneration;
     private void ApplyRunningSnapshot(IReadOnlyList<RunningProgram> snapshot, bool quiet)
@@ -203,6 +227,7 @@ public partial class ProgramsView : UserControl
         if (list.Items.Count == 0) return;
         list.SelectedIndex = Math.Clamp(list.SelectedIndex + direction, 0, list.Items.Count - 1);
         FocusSelection(list);
+        if (Navigation.LaunchList && !InPanel) ContextChanged?.Invoke();
     }
     public void MoveHorizontal(int direction)
     {
@@ -327,6 +352,7 @@ public partial class ProgramsView : UserControl
         if (InPanel) return;
         if (!Navigation.LaunchList) { await ConfirmAsync(); return; }
         currentEntry = (LaunchList.SelectedItem as CatalogRow)?.Entry; currentProgram = null;
+        if (currentEntry != null && !ProgramActionPolicy.CanEditLaunchEntry(currentEntry)) return;
         if (!catalog.CanSave) { ResetClick(this, new RoutedEventArgs()); return; }
         if (currentEntry == null) ShowPanel(ProgramPanel.Actions, "Каталог запуска", "Каталог пуст", new[] { new Choice("add", "Добавить программу") });
         else ShowActions();
@@ -440,17 +466,18 @@ public partial class ProgramsView : UserControl
     }
     private async Task EditEntry(LaunchEntry? entry)
     {
-        if (IsBusy || !catalog.CanSave) return;
+        if (IsBusy || !catalog.CanSave || entry != null && !ProgramActionPolicy.CanEditLaunchEntry(entry)) return;
         if (!InPanel) RememberAndClearListSelection();
         else ProgramActions.SelectedIndex = -1;
         editorOpen = true;
         ListsSurface.Visibility = PanelSurface.Visibility = Visibility.Collapsed;
         Editor = new LaunchEntryDialog(entry, async nextEntry => {
-                var entries = catalog.Catalog.Entries.Any(e => e.Id == nextEntry.Id)
-                    ? catalog.Catalog.Entries.Select(e => e.Id == nextEntry.Id ? nextEntry : e).ToArray()
-                    : catalog.Catalog.Entries.Append(nextEntry).ToArray();
-                var next = new LaunchCatalog(1, entries);
-                await Task.Run(() => store.Save(next)); catalog = new(next, true, null); currentEntry = nextEntry; ShowCatalog(nextEntry.Id); Notify("Программа сохранена");
+                var saved = await Task.Run(() => store.Update(current => new(current.SchemaVersion,
+                    current.Entries.Any(e => e.Id == nextEntry.Id)
+                        ? current.Entries.Select(e => e.Id == nextEntry.Id ? nextEntry : e).ToArray()
+                        : current.Entries.Append(nextEntry).ToArray())));
+                if (!saved.CanSave) throw new InvalidDataException(saved.Error);
+                catalog = saved; currentEntry = nextEntry; ShowCatalog(nextEntry.Id); Notify("Программа сохранена");
             });
         Editor.Completed += CloseEditor;
         Editor.BusyChanged += () => ContextChanged?.Invoke();
@@ -481,13 +508,15 @@ public partial class ProgramsView : UserControl
         if (sender is not ListBox list || ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is not ListBoxItem item) return;
         pressedItem = item;
         list.SelectedItem = item.DataContext; list.Focus(); e.Handled = true;
+        if (ReferenceEquals(list, LaunchList)) ContextChanged?.Invoke();
     }
     public async Task SecondaryAsync()
     {
         if (IsBusy || InPanel) return;
         if (Navigation.LaunchList)
         {
-            if (LaunchList.SelectedItem is CatalogRow row) { currentEntry = row.Entry; currentProgram = null; await EditEntry(row.Entry); }
+            if (LaunchList.SelectedItem is CatalogRow row && ProgramActionPolicy.CanEditLaunchEntry(row.Entry))
+            { currentEntry = row.Entry; currentProgram = null; await EditEntry(row.Entry); }
             return;
         }
         if (RunningList.SelectedItem is not RunningProgram program) return;
@@ -512,7 +541,7 @@ public partial class ProgramsView : UserControl
 
     private void RequestDeleteConfirmation()
     {
-        if (currentEntry == null) return;
+        if (currentEntry == null || !ProgramActionPolicy.CanEditLaunchEntry(currentEntry)) return;
         if (DeleteConfirmationRequested == null)
         {
             ShowPanel(ProgramPanel.ConfirmDelete, $"Удалить запись «{currentEntry.Name}»?", "Приложение и файл останутся на компьютере.",
@@ -539,14 +568,15 @@ public partial class ProgramsView : UserControl
 
     public async Task ConfirmDeleteAsync()
     {
-        if (Navigation.Panel != ProgramPanel.ConfirmDelete || currentEntry == null) return;
+        if (Navigation.Panel != ProgramPanel.ConfirmDelete || currentEntry == null || !ProgramActionPolicy.CanEditLaunchEntry(currentEntry)) return;
         var entry = currentEntry;
         Navigation.Panel = deleteReturnPanel;
         if (deleteReturnPanel == ProgramPanel.Actions) ShowActions();
         else ReturnToList();
         if (await RunOperation("Сохранение…", async _ => {
-            var next = new LaunchCatalog(1, catalog.Catalog.Entries.Where(e => e.Id != entry.Id).ToArray());
-            await Task.Run(() => store.Save(next)); catalog = new(next, true, null); ShowCatalog(); return new(ProgramResultCode.Success, "Запись удалена");
+            var saved = await Task.Run(() => store.Update(current => new(current.SchemaVersion, current.Entries.Where(e => e.Id != entry.Id).ToArray())));
+            if (!saved.CanSave) throw new InvalidDataException(saved.Error);
+            catalog = saved; ShowCatalog(); return new(ProgramResultCode.Success, "Запись удалена");
         })) ReturnToList();
     }
     private async void ListClick(object sender, MouseButtonEventArgs e)

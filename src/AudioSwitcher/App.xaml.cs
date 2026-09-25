@@ -25,7 +25,9 @@ public partial class App : Application
         instance = new Mutex(true, "Local\\AudioSwitcher.Portable", out bool first);
         if (!first) { Shutdown(); return; }
         DispatcherUnhandledException += (_, args) => { MessageBox.Show(args.Exception.Message, "AudioSwitcher"); args.Handled = true; Shutdown(1); };
-        new MainWindow().Show();
+        var window = new MainWindow();
+        window.Show();
+        _ = window.SynchronizeGamesAsync(quiet: true);
     }
     protected override void OnExit(ExitEventArgs e) { instance?.Dispose(); base.OnExit(e); }
 }

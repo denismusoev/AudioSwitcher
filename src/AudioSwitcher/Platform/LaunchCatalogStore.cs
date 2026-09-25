@@ -9,6 +9,7 @@ public sealed record LaunchCatalogLoad(LaunchCatalog Catalog, bool CanSave, stri
 
 public sealed class LaunchCatalogStore
 {
+    private readonly object accessGate = new();
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -23,7 +24,7 @@ public sealed class LaunchCatalogStore
 
     public LaunchCatalogLoad Load()
     {
-        try
+        lock (accessGate) try
         {
             // Read directly: File.Exists would hide access failures and permit overwriting unreadable data.
             var catalog = JsonSerializer.Deserialize<LaunchCatalog>(File.ReadAllText(FilePath), JsonOptions)
@@ -41,22 +42,42 @@ public sealed class LaunchCatalogStore
 
     public void Save(LaunchCatalog catalog)
     {
-        ValidateCatalog(catalog);
-        var current = Load();
-        if (!current.CanSave) throw new InvalidDataException(current.Error + " Для сохранения выполните явный сброс каталога.");
-        WriteAtomically(catalog);
+        lock (accessGate)
+        {
+            ValidateCatalog(catalog);
+            var current = Load();
+            if (!current.CanSave) throw new InvalidDataException(current.Error + " Для сохранения выполните явный сброс каталога.");
+            WriteAtomically(catalog);
+        }
+    }
+
+    public LaunchCatalogLoad Update(Func<LaunchCatalog, LaunchCatalog> update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        lock (accessGate)
+        {
+            var current = Load();
+            if (!current.CanSave) return current;
+            var next = update(current.Catalog);
+            ValidateCatalog(next);
+            WriteAtomically(next);
+            return new(next, true, null);
+        }
     }
 
     public void Reset()
     {
-        // Copy before replacement: a failed reset never removes the original catalog.
-        try
+        lock (accessGate)
         {
-            File.Copy(FilePath, FilePath + "." + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff") + "." + Guid.NewGuid().ToString("N") + ".bak", false);
+            // Copy before replacement: a failed reset never removes the original catalog.
+            try
+            {
+                File.Copy(FilePath, FilePath + "." + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff") + "." + Guid.NewGuid().ToString("N") + ".bak", false);
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+            WriteAtomically(new(1, []));
         }
-        catch (FileNotFoundException) { }
-        catch (DirectoryNotFoundException) { }
-        WriteAtomically(new(1, []));
     }
 
     private void WriteAtomically(LaunchCatalog catalog)
@@ -87,7 +108,9 @@ public sealed class LaunchCatalogStore
         {
             if (entry is null || entry.Id == Guid.Empty || !ids.Add(entry.Id)) throw new InvalidDataException("Каталог содержит пустые или повторяющиеся идентификаторы.");
             if (!Enum.IsDefined(entry.Kind) || string.IsNullOrWhiteSpace(entry.Name) || string.IsNullOrWhiteSpace(entry.Target)
-                || entry.Arguments is null || entry.WorkingDirectory is null)
+                || entry.Arguments is null || entry.WorkingDirectory is null || !Enum.IsDefined(entry.Source) || entry.SourceKey is null
+                || entry.Source == LaunchEntrySource.Manual && entry.SourceKey.Length != 0
+                || entry.Source == LaunchEntrySource.GameManifest && (entry.Kind != LaunchKind.Executable || !Path.IsPathFullyQualified(entry.SourceKey)))
                 throw new InvalidDataException("Каталог содержит некорректную запись программы.");
         }
     }

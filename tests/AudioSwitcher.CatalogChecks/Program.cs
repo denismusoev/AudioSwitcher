@@ -34,8 +34,117 @@ try
     foreach (var content in new[] { "[InternetShortcut]\nURL=file:///C:/Windows/x.exe", "[InternetShortcut]\nURL=javascript:alert(1)", "[InternetShortcut]\nURL=cmd:bad", "[Other]\nURL=https://example.com", "[InternetShortcut]\nURL=steam://one\nURL=https://two" })
         Check("Unsafe or malformed URL rejects: " + content, () => { File.WriteAllText(url, content); Reject(() => launcher.Validate(entry with { Kind = LaunchKind.InternetShortcut, Target = url, Arguments = "", WorkingDirectory = "" })); });
     Check("Cancelled launch does not start fixture", () => { using var cts = new CancellationTokenSource(); cts.Cancel(); try { launcher.LaunchAsync(entry, cts.Token).GetAwaiter().GetResult(); } catch (OperationCanceledException) { return; } throw new TestFailure("Cancellation ignored"); });
+
+    Check("Existing catalog entries default to manual source", () =>
+    {
+        var legacyPath = Path.Combine(root, "legacy.json");
+        File.WriteAllText(legacyPath, $$"""{"schemaVersion":1,"entries":[{"id":"{{Guid.NewGuid()}}","name":"Legacy","kind":"Executable","target":"{{exe.Replace("\\", "\\\\")}}","arguments":"","workingDirectory":""}]}""");
+        var legacy = new LaunchCatalogStore(legacyPath).Load().Catalog.Entries.Single();
+        Equal(LaunchEntrySource.Manual, legacy.Source);
+        Equal("", legacy.SourceKey);
+    });
+
+    var gamesRoot = Path.Combine(root, "Games");
+    var validGame = Path.Combine(gamesRoot, "Valid Game");
+    var validBin = Path.Combine(validGame, "bin");
+    Directory.CreateDirectory(validBin);
+    var validExe = Path.Combine(validBin, "valid.exe");
+    File.WriteAllText(validExe, "fixture");
+    File.WriteAllText(Path.Combine(validGame, "audioswitcher.game.json"), JsonSerializer.Serialize(new { name = "Valid Game", executable = "bin\\valid.exe" }));
+
+    var escapedGame = Path.Combine(gamesRoot, "Escaped Game");
+    Directory.CreateDirectory(escapedGame);
+    File.WriteAllText(Path.Combine(gamesRoot, "outside.exe"), "fixture");
+    File.WriteAllText(Path.Combine(escapedGame, "audioswitcher.game.json"), JsonSerializer.Serialize(new { name = "Escaped", executable = "..\\outside.exe" }));
+
+    var absoluteGame = Path.Combine(gamesRoot, "Absolute Game");
+    Directory.CreateDirectory(absoluteGame);
+    File.WriteAllText(Path.Combine(absoluteGame, "audioswitcher.game.json"), JsonSerializer.Serialize(new { name = "Absolute", executable = validExe }));
+
+    var missingGame = Path.Combine(gamesRoot, "Missing Game");
+    Directory.CreateDirectory(missingGame);
+    File.WriteAllText(Path.Combine(missingGame, "audioswitcher.game.json"), JsonSerializer.Serialize(new { name = "Missing", executable = "missing.exe" }));
+
+    var brokenGame = Path.Combine(gamesRoot, "Broken Game");
+    Directory.CreateDirectory(brokenGame);
+    File.WriteAllText(Path.Combine(brokenGame, "audioswitcher.game.json"), "{");
+
+    var emptyNameGame = Path.Combine(gamesRoot, "Empty Name Game");
+    Directory.CreateDirectory(emptyNameGame);
+    File.WriteAllText(Path.Combine(emptyNameGame, "game.exe"), "fixture");
+    File.WriteAllText(Path.Combine(emptyNameGame, "audioswitcher.game.json"), JsonSerializer.Serialize(new { name = " ", executable = "game.exe" }));
+
+    var wrongExtensionGame = Path.Combine(gamesRoot, "Wrong Extension Game");
+    Directory.CreateDirectory(wrongExtensionGame);
+    File.WriteAllText(Path.Combine(wrongExtensionGame, "game.com"), "fixture");
+    File.WriteAllText(Path.Combine(wrongExtensionGame, "audioswitcher.game.json"), JsonSerializer.Serialize(new { name = "Wrong Extension", executable = "game.com" }));
+
+    Check("Scanner accepts only an existing relative EXE inside its game folder", () =>
+    {
+        var games = new GameManifestScanner(gamesRoot).Scan();
+        Equal(1, games.Count);
+        Equal("Valid Game", games[0].Name);
+        Equal(validExe, games[0].ExecutablePath);
+        Equal(validBin, games[0].WorkingDirectory);
+        Equal(validGame, games[0].SourceKey);
+    });
+    Check("Missing games root produces an empty scan", () => Equal(0, new GameManifestScanner(Path.Combine(root, "No Games")).Scan().Count));
+
+    Check("Synchronization creates updates and removes only manifest entries", () =>
+    {
+        var syncPath = Path.Combine(root, "sync", "programs.json");
+        var syncStore = new LaunchCatalogStore(syncPath);
+        var manual = entry with { Id = Guid.NewGuid(), Name = "Manual" };
+        syncStore.Save(new LaunchCatalog(1, [manual]));
+        var synchronizer = new GameCatalogSynchronizer(syncStore, new GameManifestScanner(gamesRoot));
+
+        var first = synchronizer.Synchronize()!.Catalog;
+        Equal(2, first.Entries.Count);
+        Equal(manual, first.Entries.Single(item => item.Source == LaunchEntrySource.Manual));
+        var automatic = first.Entries.Single(item => item.Source == LaunchEntrySource.GameManifest);
+        Equal("Valid Game", automatic.Name);
+
+        var nextExe = Path.Combine(validGame, "next.exe");
+        File.WriteAllText(nextExe, "fixture");
+        File.WriteAllText(Path.Combine(validGame, "audioswitcher.game.json"), JsonSerializer.Serialize(new { name = "Renamed Game", executable = "next.exe" }));
+        var second = synchronizer.Synchronize()!.Catalog;
+        var updated = second.Entries.Single(item => item.Source == LaunchEntrySource.GameManifest);
+        Equal(automatic.Id, updated.Id);
+        Equal("Renamed Game", updated.Name);
+        Equal(nextExe, updated.Target);
+
+        File.Delete(Path.Combine(validGame, "audioswitcher.game.json"));
+        var third = synchronizer.Synchronize()!.Catalog;
+        Equal(1, third.Entries.Count);
+        Equal(manual, third.Entries.Single());
+    });
+    Check("A concurrent synchronization request is skipped", () =>
+    {
+        var concurrentStore = new LaunchCatalogStore(Path.Combine(root, "concurrent", "programs.json"));
+        var scanner = new BlockingScanner();
+        var synchronizer = new GameCatalogSynchronizer(concurrentStore, scanner);
+        var first = Task.Run(synchronizer.Synchronize);
+        if (!scanner.Entered.Wait(TimeSpan.FromSeconds(5))) throw new Exception("First scan did not start");
+        Equal<LaunchCatalogLoad?>(null, synchronizer.Synchronize());
+        scanner.Release.Set();
+        if (first.GetAwaiter().GetResult() is null) throw new Exception("First synchronization was skipped");
+        Equal(1, scanner.Calls);
+    });
 }
 finally { Directory.Delete(root, true); }
 Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: 0");
 return failed == 0 ? 0 : 1;
 sealed class TestFailure(string message) : Exception(message);
+sealed class BlockingScanner : IGameManifestScanner
+{
+    public ManualResetEventSlim Entered { get; } = new();
+    public ManualResetEventSlim Release { get; } = new();
+    public int Calls { get; private set; }
+    public IReadOnlyList<GameManifestEntry> Scan()
+    {
+        Calls++;
+        Entered.Set();
+        if (!Release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+        return [];
+    }
+}

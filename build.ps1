@@ -4,6 +4,8 @@ dotnet run --project "$PSScriptRoot/tests/AudioSwitcher.Checks" --configuration 
 if ($LASTEXITCODE -ne 0) { throw 'Checks failed' }
 dotnet run --project "$PSScriptRoot/tests/AudioSwitcher.CatalogChecks" --configuration Release
 if ($LASTEXITCODE -ne 0) { throw 'Catalog checks failed' }
+dotnet restore "$PSScriptRoot/src/AudioSwitcher/AudioSwitcher.csproj" --runtime $Runtime
+if ($LASTEXITCODE -ne 0) { throw 'Restore failed' }
 dotnet clean "$PSScriptRoot/src/AudioSwitcher/AudioSwitcher.csproj" --configuration Release --runtime $Runtime
 if ($LASTEXITCODE -ne 0) { throw 'Clean failed' }
 dotnet publish "$PSScriptRoot/src/AudioSwitcher/AudioSwitcher.csproj" --configuration Release --runtime $Runtime --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false --output "$PSScriptRoot/artifacts/portable/$Runtime"
