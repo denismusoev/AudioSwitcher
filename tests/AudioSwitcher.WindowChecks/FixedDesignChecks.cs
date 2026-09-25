@@ -114,6 +114,7 @@ internal static class FixedDesignChecks
             window.UpdateLayout();
             var sectionFrame = (Border)controlTab.Template.FindName("SelectionFrame", controlTab);
             RequireFocusFrame(sectionFrame, focusOutline, focusThickness, focusCorner, "Section");
+            RequireAnimatedPs5Focus(controlTab, sectionFrame, "Section");
             RequirePixelAlignedVerticalEdges(sectionFrame, window, "Section");
             RaiseRightClick(window, controlTab);
             var programs = programsView;
@@ -165,7 +166,7 @@ internal static class FixedDesignChecks
                 var rowFrame = VisualChild<Border>(selectedRow) ?? throw new Exception("Selected row frame missing");
                 RequireFocusFrame(rowFrame, focusOutline, focusThickness, focusCorner, "List row");
                 RequirePixelAlignedVerticalEdges(rowFrame, window, "List row");
-                focusedRowColor = (rowFrame.BorderBrush as SolidColorBrush)?.Color ?? throw new Exception("Selected row outline missing");
+                focusedRowColor = FocusColor(rowFrame.BorderBrush) ?? throw new Exception("Selected row outline missing");
                 focusedRowCorner = rowFrame.CornerRadius;
 
                 Call(window, "Execute", PadAction.Close);
@@ -178,7 +179,7 @@ internal static class FixedDesignChecks
             Call(window, "Execute", PadAction.Confirm);
             window.UpdateLayout();
             var audioFrame = VisualChild<Border>(audio) ?? throw new Exception("Control card frame missing");
-            Require(audioFrame.BorderBrush is SolidColorBrush audioBrush && focusedRowColor == audioBrush.Color,
+            Require(focusedRowColor == FocusColor(audioFrame.BorderBrush),
                 "Focused rows and control cards use different outline colors");
             Require(focusedRowCorner == audioFrame.CornerRadius,
                 "Focused rows and control cards use different corner radii");
@@ -559,13 +560,50 @@ internal static class FixedDesignChecks
     private static object? Call(object instance, string name, params object?[] args) => instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(instance, args);
     private static void RequireFocusFrame(Border frame, Color outline, Thickness thickness, CornerRadius corner, string name)
     {
-        Require(frame.BorderBrush is SolidColorBrush brush && brush.Color == outline,
+        Require(frame.BorderBrush is SolidColorBrush brush && brush.Color == outline
+            || frame.BorderBrush is LinearGradientBrush gradient && gradient.GradientStops.Any(stop => stop.Color == outline),
             $"{name} focus does not use FocusOutline: {frame.BorderBrush}");
         Require(frame.BorderThickness == thickness,
             $"{name} focus thickness {frame.BorderThickness} differs from token {thickness}");
         Require(frame.CornerRadius == corner,
             $"{name} focus corner {frame.CornerRadius} differs from token {corner}");
     }
+
+    private static void RequireAnimatedPs5Focus(Control owner, Border frame, string name)
+    {
+        var outline = frame.BorderBrush as LinearGradientBrush;
+        var rotation = outline?.RelativeTransform as RotateTransform;
+        var glass = owner.Template.FindName("GlassSweep", owner) as Border;
+        var glassBrush = glass?.Background as LinearGradientBrush;
+        var translation = glassBrush?.RelativeTransform as TranslateTransform;
+        Require(rotation != null && glass != null && translation != null,
+            $"{name} focus is missing the animated PS5 border or glass layer");
+
+        frame.Tag = true;
+        glass!.Tag = true;
+        double initialAngle = rotation!.Angle;
+        double initialOffset = translation!.X;
+        var framePump = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(240)
+        };
+        timer.Tick += (_, _) => { timer.Stop(); framePump.Continue = false; };
+        timer.Start();
+        Dispatcher.PushFrame(framePump);
+
+        Require(Math.Abs(rotation.Angle - initialAngle) > 1 && Math.Abs(translation.X - initialOffset) > 0.05 && glass.Opacity > 0,
+            $"{name} PS5 border and glass layers do not animate while focused");
+        frame.Tag = false;
+        glass.Tag = false;
+    }
+
+    private static Color? FocusColor(Brush? brush) => brush switch
+    {
+        SolidColorBrush solid => solid.Color,
+        LinearGradientBrush gradient => gradient.GradientStops.LastOrDefault()?.Color,
+        _ => null
+    };
     private static void Capture(Window window, string name)
     {
         var frame = (FrameworkElement)window.FindName("AppRoot");
