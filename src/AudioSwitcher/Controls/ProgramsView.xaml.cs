@@ -8,6 +8,8 @@ using AudioSwitcher.Platform;
 
 namespace AudioSwitcher.Controls;
 
+public enum WindowSelectionAction { Move, Close }
+
 public partial class ProgramsView : UserControl
 {
     private sealed record Choice(string Id, string DisplayName, string DisplayDetails = "", WindowTarget? Window = null);
@@ -46,6 +48,7 @@ public partial class ProgramsView : UserControl
     public event Action? ContextChanged;
     public event Action? TransferCompleted;
     public event Action<string>? DeleteConfirmationRequested;
+    public event Action<WindowSelectionAction, RunningProgram>? WindowSelectionRequested;
     public WindowMoveBehavior MoveBehavior { get; set; } = WindowMoveBehavior.KeepUtilityFocused;
 
     public ProgramsView() : this(new LaunchCatalogStore()) { }
@@ -301,7 +304,8 @@ public partial class ProgramsView : UserControl
             {
                 currentProgram = program; currentEntry = null;
                 if (program.Windows.Count == 1) await MoveWindow(program.Windows[0]);
-                else ShowPanel(ProgramPanel.Windows, "Какое окно переместить?", program.Name, program.Windows);
+                else if (!RequestWindowSelection(WindowSelectionAction.Move, program))
+                    ShowPanel(ProgramPanel.Windows, "Какое окно переместить?", program.Name, program.Windows);
             }
             return;
         }
@@ -318,7 +322,8 @@ public partial class ProgramsView : UserControl
             case "move":
                 if (currentProgram == null) return;
                 if (currentProgram.Windows.Count == 1) await MoveWindow(currentProgram.Windows[0]);
-                else ShowPanel(ProgramPanel.Windows, "Какое окно переместить?", currentProgram.Name, currentProgram.Windows);
+                else if (!RequestWindowSelection(WindowSelectionAction.Move, currentProgram))
+                    ShowPanel(ProgramPanel.Windows, "Какое окно переместить?", currentProgram.Name, currentProgram.Windows);
                 break;
             case "close": if (currentProgram != null) await CloseProgram(currentProgram); break;
             case "close-window":
@@ -424,7 +429,7 @@ public partial class ProgramsView : UserControl
         bool activate = MoveBehavior == WindowMoveBehavior.ActivateAndClose;
         if (!await RunOperation("Перемещение…", token => mover.MoveToPrimaryAsync(target, token, activate))) return;
         if (activate) { TransferCompleted?.Invoke(); return; }
-        ReturnToList();
+        if (Navigation.Panel != ProgramPanel.List) ReturnToList();
         // Let WPF commit the panel transition before replacing the list source.
         // Updating ItemsSource in the same layout pass can leave stale selected-row
         // pixels behind after the native window has moved between monitors.
@@ -439,9 +444,37 @@ public partial class ProgramsView : UserControl
     private async Task CloseProgram(RunningProgram program)
     {
         var target = ProgramActionPolicy.DirectCloseTarget(program);
-        if (target == null) { ShowCloseChoices(program); return; }
+        if (target == null)
+        {
+            if (!RequestWindowSelection(WindowSelectionAction.Close, program)) ShowCloseChoices(program);
+            return;
+        }
         if (await RunOperation("Закрытие…", token => processes.CloseAsync(target, token)))
-        { ReturnToList(); await RefreshAsync(quiet: true); }
+        { if (Navigation.Panel != ProgramPanel.List) ReturnToList(); await RefreshAsync(quiet: true); }
+    }
+
+    private bool RequestWindowSelection(WindowSelectionAction action, RunningProgram program)
+    {
+        if (WindowSelectionRequested == null) return false;
+        currentProgram = program;
+        WindowSelectionRequested.Invoke(action, program);
+        return true;
+    }
+
+    public async Task ApplyWindowSelectionAsync(WindowSelectionAction action, RunningProgram program, WindowTarget? target)
+    {
+        if (IsBusy) return;
+        currentProgram = program;
+        if (action == WindowSelectionAction.Move)
+        {
+            if (target != null) await MoveWindow(target);
+            return;
+        }
+
+        bool completed = target == null
+            ? await RunOperation("Закрытие…", token => processes.CloseAllAsync(program.Windows, token))
+            : await RunOperation("Закрытие…", token => processes.CloseAsync(target, token));
+        if (completed) { if (Navigation.Panel != ProgramPanel.List) ReturnToList(); await RefreshAsync(quiet: true); }
     }
     private async Task<bool> RunOperation(string status, Func<CancellationToken, Task<ProgramResult>> operation)
     {

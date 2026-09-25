@@ -5,7 +5,6 @@ namespace AudioSwitcher.Platform;
 public static class WindowPlacement
 {
     private const double MaximumWorkAreaFraction = 0.88;
-    private const double AspectRatio = 16.0 / 9.0;
 
     public readonly record struct WorkArea(int Left, int Top, int Width, int Height, double Scale);
     internal readonly record struct DipSize(double Width, double Height);
@@ -32,11 +31,10 @@ public static class WindowPlacement
 
     internal static DipSize PreferredSizeInDips(WorkArea area, double widthDip, double heightDip)
     {
-        _ = heightDip; // The preferred surface is always kept at the app's 16:9 design ratio.
         double maximumWidth = area.Width / area.Scale * MaximumWorkAreaFraction;
         double maximumHeight = area.Height / area.Scale * MaximumWorkAreaFraction;
-        double width = Math.Min(widthDip, Math.Min(maximumWidth, maximumHeight * AspectRatio));
-        return new(Math.Max(1, width), Math.Max(1, width / AspectRatio));
+        double scale = Math.Min(1, Math.Min(maximumWidth / widthDip, maximumHeight / heightDip));
+        return new(Math.Max(1, widthDip * scale), Math.Max(1, heightDip * scale));
     }
 
     public static void Center(IntPtr window)

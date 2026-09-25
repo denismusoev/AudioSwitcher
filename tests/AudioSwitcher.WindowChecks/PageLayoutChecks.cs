@@ -37,6 +37,108 @@ internal static class PageLayoutChecks
                     ((DispatcherTimer)typeof(MainWindow).GetField("refreshTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
                     ((DispatcherTimer)typeof(MainWindow).GetField("padTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
 
+                    Check("Preferred window removes unused width and keeps Settings in the content column", () =>
+                    {
+                        var appRoot = (FrameworkElement)window.FindName("AppRoot");
+                        var controlSurface = (FrameworkElement)window.FindName("ControlSurface");
+                        var settingsSurface = (FrameworkElement)window.FindName("SettingsSurface");
+                        window.UpdateLayout();
+
+                        Rect contentBounds = controlSurface.TransformToAncestor(appRoot).TransformBounds(new Rect(controlSurface.RenderSize));
+                        Require(Math.Abs(window.Width - 1200) < 0.5 && Math.Abs(window.Height - 765) < 0.5,
+                            $"Preferred window is {window.Width:0.##}x{window.Height:0.##} instead of 1200x765");
+                        Require(contentBounds.Width is >= 680 and <= 700,
+                            $"Primary content remains {contentBounds.Width:0.##} DIPs wide");
+
+                        Call(window, "OpenSettings");
+                        window.UpdateLayout();
+                        Rect settingsBounds = settingsSurface.TransformToAncestor(appRoot).TransformBounds(new Rect(settingsSurface.RenderSize));
+                        Require(Math.Abs(settingsBounds.Left - contentBounds.Left) < 0.5
+                            && Math.Abs(settingsBounds.Right - contentBounds.Right) < 0.5,
+                            $"Settings bounds {settingsBounds} do not match content bounds {contentBounds}");
+                        Call(window, "CloseDetails", true);
+                    });
+
+                    Check("Control values align with the trailing edge of their rows", () =>
+                    {
+                        Call(window, "SwitchSection", AppSection.Control);
+                        window.UpdateLayout();
+
+                        foreach (var (cardName, valueName) in new[]
+                        {
+                            ("AudioControlCard", "AudioSummary"),
+                            ("DisplayControlCard", "DisplaySummary")
+                        })
+                        {
+                            var card = (FrameworkElement)window.FindName(cardName);
+                            var value = (FrameworkElement)window.FindName(valueName);
+                            double cardRight = card.TranslatePoint(new Point(card.ActualWidth, 0), window).X;
+                            double valueRight = value.TranslatePoint(new Point(value.ActualWidth, 0), window).X;
+                            Require(Math.Abs(cardRight - valueRight - 18) < 0.5,
+                                $"{valueName} ends {cardRight - valueRight:0.##} DIPs before the row edge instead of 18");
+                        }
+                    });
+
+                    Check("Multiple-window move choices open the shared modal picker", () =>
+                    {
+                        Call(window, "SwitchSection", AppSection.Running);
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        var runningList = (ListBox)programs.FindName("RunningList");
+                        var identity = new ProcessIdentity(4242, 17);
+                        var fixture = new RunningProgram(identity, "Редактор", new[]
+                        {
+                            new WindowTarget(identity, 101, "Документ А", "Экран 1", false),
+                            new WindowTarget(identity, 102, "Документ Б", "Экран 2", false)
+                        });
+                        runningList.ItemsSource = new[] { fixture };
+                        runningList.SelectedIndex = 0;
+                        try
+                        {
+                            programs.ConfirmAsync().GetAwaiter().GetResult();
+                            var picker = window.FindName("WindowPickerOverlay") as FrameworkElement;
+                            var choices = window.FindName("WindowChoices") as ListBox;
+                            Require(picker?.Visibility == Visibility.Visible && choices?.Items.Count == 2,
+                                "Move choices did not open the shared modal picker");
+                            Require(programs.Navigation.Panel == ProgramPanel.List,
+                                $"Move choices replaced the list with nested panel {programs.Navigation.Panel}");
+                        }
+                        finally
+                        {
+                            Call(window, "CloseDetails", true);
+                            if (programs.InPanel) programs.Back();
+                        }
+                    });
+
+                    Check("Multiple-window close choices open the shared modal picker", () =>
+                    {
+                        Call(window, "SwitchSection", AppSection.Running);
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        var runningList = (ListBox)programs.FindName("RunningList");
+                        var identity = new ProcessIdentity(4343, 18);
+                        var fixture = new RunningProgram(identity, "Браузер", new[]
+                        {
+                            new WindowTarget(identity, 201, "Вкладка А", "Экран 1", false),
+                            new WindowTarget(identity, 202, "Вкладка Б", "Экран 2", false)
+                        });
+                        runningList.ItemsSource = new[] { fixture };
+                        runningList.SelectedIndex = 0;
+                        try
+                        {
+                            programs.SecondaryAsync().GetAwaiter().GetResult();
+                            var picker = window.FindName("WindowPickerOverlay") as FrameworkElement;
+                            var choices = window.FindName("WindowChoices") as ListBox;
+                            Require(picker?.Visibility == Visibility.Visible && choices?.Items.Count == 3,
+                                "Close choices did not open the shared modal picker with Close all");
+                            Require(programs.Navigation.Panel == ProgramPanel.List,
+                                $"Close choices replaced the list with nested panel {programs.Navigation.Panel}");
+                        }
+                        finally
+                        {
+                            Call(window, "CloseDetails", true);
+                            if (programs.InPanel) programs.Back();
+                        }
+                    });
+
                     Check("All primary page titles match Control typography", () =>
                     {
                         var controlSurface = (Grid)window.FindName("ControlSurface");
@@ -73,7 +175,7 @@ internal static class PageLayoutChecks
                         var settingsSurface = (FrameworkElement)window.FindName("SettingsSurface");
                         var settingsTitle = Descendants<TextBlock>(settingsSurface).Single(text => text.Text == "Настройки");
 
-                        foreach (double width in new[] { 1360d, 1100d })
+                        foreach (double width in new[] { 1200d, 1100d })
                         {
                             window.Width = width;
                             Call(window, "UpdateAppearance");
@@ -104,10 +206,11 @@ internal static class PageLayoutChecks
                     window.Close();
                     try { Directory.Delete(root, true); } catch { }
                     app.Shutdown();
+                    Dispatcher.CurrentDispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
                     ready.Set();
                 }
             });
-            app.Run();
+            Dispatcher.Run();
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -136,4 +239,5 @@ internal static class PageLayoutChecks
     {
         if (!value) throw new Exception(message);
     }
+
 }

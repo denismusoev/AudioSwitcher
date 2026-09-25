@@ -38,10 +38,10 @@ internal static class ApprovedDesignChecks
                     ((DispatcherTimer)typeof(MainWindow).GetField("refreshTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
                     ((DispatcherTimer)typeof(MainWindow).GetField("padTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
 
-                    Check("Default surface is the approved compact 16:9 size", () =>
+                    Check("Default surface uses the approved narrower size", () =>
                     {
-                        Require(Math.Abs(window.Width - 1360) < 0.5 && Math.Abs(window.Height - 765) < 0.5,
-                            $"Window is {window.Width:0.##}x{window.Height:0.##} instead of 1360x765");
+                        Require(Math.Abs(window.Width - 1200) < 0.5 && Math.Abs(window.Height - 765) < 0.5,
+                            $"Window is {window.Width:0.##}x{window.Height:0.##} instead of 1200x765");
                     });
 
                     Check("Secondary status text uses the larger readable token", () =>
