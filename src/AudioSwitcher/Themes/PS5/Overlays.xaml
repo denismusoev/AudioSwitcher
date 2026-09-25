@@ -1,0 +1,93 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style x:Key="Ps5Drawer" TargetType="Border">
+    <Setter Property="Background" Value="{DynamicResource Ps5PanelSurface}"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="0"/>
+    <Setter Property="Padding" Value="23"/>
+    <Setter Property="Width" Value="{StaticResource Ps5DrawerWidth}"/>
+    <Setter Property="HorizontalAlignment" Value="Right"/>
+    <Setter Property="VerticalAlignment" Value="Stretch"/>
+    <Setter Property="RenderTransform"><Setter.Value><TranslateTransform X="0"/></Setter.Value></Setter>
+    <Style.Triggers>
+      <MultiDataTrigger>
+        <MultiDataTrigger.Conditions>
+          <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Visibility}" Value="Visible"/>
+          <Condition Binding="{Binding Source={x:Static SystemParameters.ClientAreaAnimation}}" Value="True"/>
+        </MultiDataTrigger.Conditions>
+        <MultiDataTrigger.EnterActions>
+          <BeginStoryboard>
+            <Storyboard>
+              <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1"
+                               Duration="{StaticResource Ps5MotionDrawer}" EasingFunction="{StaticResource Ps5EaseOut}"/>
+              <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                               From="28" To="0" Duration="{StaticResource Ps5MotionDrawer}"
+                               EasingFunction="{StaticResource Ps5EaseOut}"/>
+            </Storyboard>
+          </BeginStoryboard>
+        </MultiDataTrigger.EnterActions>
+      </MultiDataTrigger>
+    </Style.Triggers>
+  </Style>
+
+  <Style x:Key="Ps5SettingsPane" TargetType="Border">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Width" Value="884"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
+    <Setter Property="VerticalAlignment" Value="Stretch"/>
+  </Style>
+
+  <Style x:Key="Ps5ModalBackdrop" TargetType="Border">
+    <Setter Property="Background" Value="#B5080A0D"/>
+    <Setter Property="Opacity" Value="1"/>
+  </Style>
+
+  <Style x:Key="Ps5EditorAttribute" TargetType="Border">
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="MinHeight" Value="121"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Margin" Value="0,0,0,14"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Ps5FocusCornerRadius}"/>
+    <Setter Property="BorderThickness" Value="{DynamicResource Ps5FocusThickness}"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+    <Style.Triggers>
+      <Trigger Property="IsKeyboardFocusWithin" Value="True">
+        <Setter Property="BorderBrush" Value="{DynamicResource Ps5FocusOutline}"/>
+        <Setter Property="Background" Value="{DynamicResource Ps5FocusedSurface}"/>
+      </Trigger>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Background" Value="{DynamicResource Ps5HoverSurface}"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <Style x:Key="Ps5EmbeddedEditor" TargetType="ContentControl">
+    <Setter Property="Opacity" Value="1"/>
+    <Setter Property="RenderTransform"><Setter.Value><TranslateTransform Y="0"/></Setter.Value></Setter>
+    <Style.Triggers>
+      <MultiDataTrigger>
+        <MultiDataTrigger.Conditions>
+          <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=Visibility}" Value="Visible"/>
+          <Condition Binding="{Binding Source={x:Static SystemParameters.ClientAreaAnimation}}" Value="True"/>
+        </MultiDataTrigger.Conditions>
+        <MultiDataTrigger.EnterActions>
+          <BeginStoryboard>
+            <Storyboard>
+              <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1"
+                               Duration="{StaticResource Ps5MotionStandard}"/>
+              <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                               From="12" To="0" Duration="{StaticResource Ps5MotionStandard}"
+                               EasingFunction="{StaticResource Ps5EaseOut}"/>
+            </Storyboard>
+          </BeginStoryboard>
+        </MultiDataTrigger.EnterActions>
+      </MultiDataTrigger>
+    </Style.Triggers>
+  </Style>
+</ResourceDictionary>

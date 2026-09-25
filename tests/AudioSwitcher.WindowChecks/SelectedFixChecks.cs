@@ -259,6 +259,7 @@ internal static class SelectedFixChecks
                         var programs = (ProgramsView)window.FindName("Programs");
                         programs.Leave();
                         programs.Navigation.Section = AppSection.Running;
+                        programs.Navigation.EnterSection();
                         var list = (ListBox)programs.FindName("RunningList");
                         var identity = new ProcessIdentity(1234, 1);
                         var first = new RunningProgram(identity, "Тест", [new(identity, (nint)10, "Окно", "Экран 1", false)]);
@@ -321,8 +322,20 @@ internal static class SelectedFixChecks
         return bounds.Left >= -0.5 && bounds.Top >= -0.5 && bounds.Right <= parent.ActualWidth + 0.5 && bounds.Bottom <= parent.ActualHeight + 0.5;
     }
 
-    private static object? Call(object instance, string name, params object?[] args) =>
-        instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(instance, args);
+    private static object? Call(object instance, string name, params object?[] args)
+    {
+        var method = instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var parameters = method.GetParameters();
+        if (args.Length < parameters.Length)
+        {
+            var expanded = new object?[parameters.Length];
+            Array.Copy(args, expanded, args.Length);
+            for (int i = args.Length; i < parameters.Length; i++)
+                expanded[i] = parameters[i].HasDefaultValue ? parameters[i].DefaultValue : Type.Missing;
+            args = expanded;
+        }
+        return method.Invoke(instance, args);
+    }
 
     private static void Require(bool value, string message)
     {

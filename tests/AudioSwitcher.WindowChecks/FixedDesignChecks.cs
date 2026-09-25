@@ -38,7 +38,7 @@ internal static class FixedDesignChecks
                 $"Application background is not the bundled full-bleed reference image: element={background?.GetType().Name ?? "null"}, source={background?.Source?.GetType().Name ?? "null"}, pixels={backgroundBitmap?.PixelWidth ?? 0}x{backgroundBitmap?.PixelHeight ?? 0}");
             Require(background!.Effect == null && background.Margin == new Thickness(0),
                 "PS5 settings background still uses runtime blur or overscan margins");
-            Require(app.Resources.MergedDictionaries.Count >= 3,
+            Require(app.Resources.MergedDictionaries.Count >= 6,
                 "PS5 design resources are not split into merged dictionaries");
             foreach (string key in new[] { "Ps5PanelSurface", "Ps5PrimaryText", "Ps5SecondaryText", "Ps5FocusOutline", "Ps5FocusFlash" })
                 Require(app.TryFindResource(key) is Brush, $"Missing PS5 semantic brush: {key}");
@@ -49,6 +49,21 @@ internal static class FixedDesignChecks
             var focusOutline = ((SolidColorBrush)app.FindResource("FocusOutline")).Color;
             var focusThickness = (Thickness)app.FindResource("FocusBorderThickness");
             var focusCorner = (CornerRadius)app.FindResource("FocusCornerRadius");
+            Require(focusOutline == ((SolidColorBrush)app.FindResource("Ps5FocusOutline")).Color
+                && focusThickness == (Thickness)app.FindResource("Ps5FocusThickness")
+                && focusThickness == new Thickness(3)
+                && focusCorner == (CornerRadius)app.FindResource("Ps5FocusCornerRadius"),
+                "Legacy focus resources are not mapped to the PS5 settings tokens");
+            foreach (string key in new[] { "Ps5SettingsCategory", "Ps5SettingsRow", "Ps5Toggle", "Ps5ListItem", "Ps5ListBox" })
+                Require(app.TryFindResource(key) is Style, $"Missing shared PS5 settings style: {key}");
+            foreach (string key in new[] { "Ps5Drawer", "Ps5SettingsPane", "Ps5EditorAttribute" })
+                Require(app.TryFindResource(key) is Style, $"Missing shared PS5 overlay style: {key}");
+            foreach (string key in new[] { "Ps5MotionFast", "Ps5MotionStandard", "Ps5MotionDrawer", "Ps5MotionFlash" })
+            {
+                var duration = (Duration)app.FindResource(key);
+                Require(duration.HasTimeSpan && duration.TimeSpan.TotalMilliseconds is >= 120 and <= 220,
+                    $"Motion token {key} is outside the approved 120–220 ms range");
+            }
 
             var hints = (FrameworkElement)window.FindName("ControllerHints");
             Require(hints.Visibility == Visibility.Visible, "Gamepad hints are hidden");
@@ -56,6 +71,7 @@ internal static class FixedDesignChecks
             Require(Grid.GetColumn(status) == 0 && status.HorizontalAlignment == HorizontalAlignment.Left, "Status is not aligned in the lower-left column");
 
             var controlTab = (Button)window.FindName("ControlTab");
+            Require(controlTab.RenderTransform is not ScaleTransform, "Settings category focus still scales the row");
             controlTab.GetType().GetProperty("IsSelected")!.SetValue(controlTab, true);
             controlTab.ApplyTemplate();
             var sectionMarker = controlTab.Template.FindName("SectionMarker", controlTab) as FrameworkElement;
@@ -66,11 +82,17 @@ internal static class FixedDesignChecks
             Require(footer != null && overlay != null && Panel.GetZIndex(footer) > Panel.GetZIndex(overlay), "Footer is not above overlays");
 
             var settingsToggle = (ToggleButton)window.FindName("SettingsToggle");
+            Require(settingsToggle.RenderTransform is not ScaleTransform, "Settings toggle focus still scales the row");
             settingsToggle.ApplyTemplate();
             var toggleState = settingsToggle.Template.FindName("ToggleState", settingsToggle) as TextBlock;
+            var toggleTrack = settingsToggle.Template.FindName("Track", settingsToggle) as Border;
+            var toggleThumb = settingsToggle.Template.FindName("Thumb", settingsToggle) as Border;
             Require(toggleState?.Text == "Выкл.", "Toggle has no explicit off label");
+            Require(toggleTrack?.Width == 70 && toggleTrack.Height == 28 && toggleThumb?.Opacity == 0,
+                "Toggle off state does not match the PS5 settings switch silhouette");
             settingsToggle.IsChecked = true;
-            Require(toggleState!.Text == "Вкл.", "Toggle has no explicit on label");
+            Require(toggleState!.Text == "Вкл." && toggleThumb!.Opacity == 1 && toggleThumb.HorizontalAlignment == HorizontalAlignment.Right,
+                "Toggle has no explicit PS5 on state");
             Require((double)app.FindResource("BadgeSize") >= 21, "Gamepad badges are too small for TV viewing");
             Require(window.Width <= 1500, $"Window remains too wide at {window.Width}");
 
@@ -97,6 +119,9 @@ internal static class FixedDesignChecks
             var programs = programsView;
             Require(programs.Navigation.SectionActive, "Right click did not activate the selected element");
             var audio = (Button)window.FindName("AudioControlCard");
+            var audioLabel = (TextBlock)window.FindName("AudioControlLabel");
+            Require(audioLabel.FontSize == 24 && audioLabel.FontWeight == FontWeights.Light,
+                "Primary settings rows do not use the PS5 settings label typography");
             audio.ApplyTemplate();
             window.UpdateLayout();
             var controlFrame = (Border)audio.Template.FindName("FocusFrame", audio);
@@ -175,6 +200,13 @@ internal static class FixedDesignChecks
             ((FrameworkElement)window.FindName("OverlayShade")).Visibility = Visibility.Visible;
             var picker = (Border)window.FindName("DevicePickerOverlay");
             picker.Visibility = Visibility.Visible;
+            Require(picker.Background is SolidColorBrush drawerBrush
+                && drawerBrush.Color == ((SolidColorBrush)app.FindResource("Ps5PanelSurface")).Color
+                && picker.RenderTransform is TranslateTransform,
+                "Device picker is not using the reusable PS5 drawer surface and transition transform");
+            var modalBackdrop = (Border)window.FindName("ModalBackdrop");
+            Require(modalBackdrop.Background is SolidColorBrush dimBrush && dimBrush.Color.A >= 0xB0,
+                "Modal drawer backdrop is not sufficiently dimmed");
             var devices = (ListBox)window.FindName("Devices");
             devices.ItemsSource = new[]
             {

@@ -3,34 +3,10 @@
         Background="#0A0E18" Foreground="{DynamicResource Text}" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="{DynamicResource Font28}" FontWeight="350" UseLayoutRounding="True" SnapsToDevicePixels="True" PreviewKeyDown="OnKeyDown" PreviewMouseLeftButtonDown="PointerDown" PreviewMouseLeftButtonUp="PointerUp" PreviewMouseMove="PointerMove" PreviewMouseRightButtonDown="RightPointerDown" PreviewMouseRightButtonUp="RightPointerUp">
   <WindowChrome.WindowChrome><WindowChrome CaptionHeight="0" ResizeBorderThickness="0" GlassFrameThickness="0" CornerRadius="0"/></WindowChrome.WindowChrome>
   <Window.Resources>
-    <Style x:Key="TvCard" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="Padding" Value="18,10"/><Setter Property="MinHeight" Value="79"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="FocusFrame" Background="Transparent" BorderBrush="Transparent" BorderThickness="{DynamicResource FocusBorderThickness}" CornerRadius="{DynamicResource FocusCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/></Border>
-        <ControlTemplate.Triggers>
-          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="FocusFrame" Property="BorderBrush" Value="{DynamicResource FocusOutline}"/><Setter TargetName="FocusFrame" Property="Background" Value="{DynamicResource SelectedSurface}"/></Trigger>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="FocusFrame" Property="Background" Value="{DynamicResource HoverSurface}"/><Setter TargetName="FocusFrame" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
-          <Trigger Property="IsPressed" Value="True"><Setter TargetName="FocusFrame" Property="Background" Value="{DynamicResource SelectedSurface}"/></Trigger>
-        </ControlTemplate.Triggers>
-      </ControlTemplate></Setter.Value></Setter>
-    </Style>
-    <Style x:Key="TvTab" TargetType="controls:SectionButton" BasedOn="{StaticResource SectionTab}">
-      <Setter Property="FontSize" Value="{DynamicResource Font38}"/><Setter Property="MinHeight" Value="84"/><Setter Property="Width" Value="311"/><Setter Property="HorizontalContentAlignment" Value="Left"/><Setter Property="Padding" Value="23,8"/><Setter Property="Margin" Value="0"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="controls:SectionButton">
-        <Border x:Name="SelectionFrame" BorderBrush="Transparent" BorderThickness="{DynamicResource FocusBorderThickness}" CornerRadius="{DynamicResource FocusCornerRadius}" Background="Transparent" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Ellipse x:Name="SectionMarker" Width="5" Height="5" Fill="{DynamicResource SelectedText}" Margin="0,0,13,0" VerticalAlignment="Center" Visibility="Collapsed"/><ContentPresenter Grid.Column="1" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/></Grid></Border>
-        <ControlTemplate.Triggers>
-          <Trigger Property="IsSelected" Value="True"><Setter TargetName="SectionMarker" Property="Visibility" Value="Visible"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
-          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="SelectionFrame" Property="BorderBrush" Value="{DynamicResource FocusOutline}"/><Setter TargetName="SelectionFrame" Property="Background" Value="{DynamicResource SelectedSurface}"/></Trigger>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="SelectionFrame" Property="Background" Value="{DynamicResource HoverSurface}"/></Trigger>
-        </ControlTemplate.Triggers>
-      </ControlTemplate></Setter.Value></Setter>
-    </Style>
-    <Style x:Key="OverlayCard" TargetType="Border">
-      <Setter Property="Background" Value="{DynamicResource DialogSurface}"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="CornerRadius" Value="0"/><Setter Property="Padding" Value="23"/><Setter Property="Width" Value="263"/><Setter Property="HorizontalAlignment" Value="Right"/><Setter Property="VerticalAlignment" Value="Stretch"/><Setter Property="Margin" Value="0,40,399,94"/>
-    </Style>
-    <Style x:Key="SettingsPane" TargetType="Border">
-      <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="CornerRadius" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="Width" Value="884"/><Setter Property="HorizontalAlignment" Value="Left"/><Setter Property="VerticalAlignment" Value="Stretch"/><Setter Property="Margin" Value="506,135,0,94"/>
-    </Style>
+    <Style x:Key="TvCard" TargetType="Button" BasedOn="{StaticResource Ps5SettingsRow}"/>
+    <Style x:Key="TvTab" TargetType="controls:SectionButton" BasedOn="{StaticResource Ps5SettingsCategory}"><Setter Property="Width" Value="311"/><Setter Property="Margin" Value="0"/></Style>
+    <Style x:Key="OverlayCard" TargetType="Border" BasedOn="{StaticResource Ps5Drawer}"><Setter Property="Margin" Value="0,40,399,94"/></Style>
+    <Style x:Key="SettingsPane" TargetType="Border" BasedOn="{StaticResource Ps5SettingsPane}"><Setter Property="Margin" Value="506,135,0,94"/></Style>
     <Style x:Key="GamepadBadge" TargetType="Border">
       <Setter Property="MinWidth" Value="{DynamicResource BadgeSize}"/><Setter Property="Height" Value="{DynamicResource BadgeSize}"/><Setter Property="Padding" Value="0"/><Setter Property="BorderThickness" Value="0"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Background" Value="Transparent"/><Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
@@ -44,38 +20,12 @@
     <Style x:Key="CommandHint" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="ContentTemplate" Value="{StaticResource CommandHintTemplate}"/><Setter Property="MinHeight" Value="42"/><Setter Property="Padding" Value="10,7"/><Setter Property="Margin" Value="8,0,0,0"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource Text}"/>
     </Style>
-    <Style x:Key="SettingsToggleRow" TargetType="ToggleButton">
-      <Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="MinHeight" Value="79"/><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource Text}"/><Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
-        <Border x:Name="Row" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="{DynamicResource FocusBorderThickness}" CornerRadius="{DynamicResource FocusCornerRadius}" Padding="18,0">
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <StackPanel VerticalAlignment="Center"><TextBlock Text="Переключаться на приложение" FontSize="{DynamicResource Font38}" FontWeight="350" TextWrapping="Wrap"/><TextBlock Text="Для уже запущенных приложений; AudioSwitcher закроется после успешного переноса" FontSize="{DynamicResource Font28}" Foreground="{DynamicResource MutedText}" Margin="0,4,0,0" TextWrapping="Wrap"/></StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="21,0,0,0"><TextBlock x:Name="ToggleState" Text="Выкл." FontSize="{DynamicResource Font24}" Foreground="{DynamicResource MutedText}" VerticalAlignment="Center" Margin="0,0,11,0"/><Border x:Name="Track" Width="49" Height="24" CornerRadius="12" Background="#40434D" VerticalAlignment="Center"><Border x:Name="Thumb" Width="19" Height="19" CornerRadius="10" Background="{DynamicResource Text}" HorizontalAlignment="Left" Margin="3,0"/></Border></StackPanel>
-            <Border Height="1" Background="{DynamicResource Line}" VerticalAlignment="Bottom" Grid.ColumnSpan="2"/>
-          </Grid>
-        </Border>
-        <ControlTemplate.Triggers>
-          <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="#60636D"/><Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/><Setter TargetName="ToggleState" Property="Text" Value="Вкл."/><Setter TargetName="ToggleState" Property="Foreground" Value="{DynamicResource Text}"/></Trigger>
-          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource FocusOutline}"/><Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedSurface}"/></Trigger>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource HoverSurface}"/></Trigger>
-        </ControlTemplate.Triggers>
-      </ControlTemplate></Setter.Value></Setter>
-    </Style>
-    <Style x:Key="SingleChoiceItem" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
-        <Border x:Name="Row" Background="Transparent" BorderBrush="Transparent" BorderThickness="{DynamicResource FocusBorderThickness}" CornerRadius="{DynamicResource FocusCornerRadius}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/></Border>
-        <ControlTemplate.Triggers>
-          <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource FocusOutline}"/><Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedSurface}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
-          <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedSurface}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource HoverSurface}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></Trigger>
-          <MultiTrigger><MultiTrigger.Conditions><Condition Property="IsSelected" Value="True"/><Condition Property="IsMouseOver" Value="True"/></MultiTrigger.Conditions><Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedSurface}"/><Setter Property="Foreground" Value="{DynamicResource SelectedText}"/></MultiTrigger>
-        </ControlTemplate.Triggers>
-      </ControlTemplate></Setter.Value></Setter>
-    </Style>
+    <Style x:Key="SettingsToggleRow" TargetType="ToggleButton" BasedOn="{StaticResource Ps5Toggle}"/>
+    <Style x:Key="SingleChoiceItem" TargetType="ListBoxItem" BasedOn="{StaticResource Ps5ListItem}"/>
     <Style x:Key="DeleteChoiceItem" TargetType="ListBoxItem" BasedOn="{StaticResource SingleChoiceItem}">
       <Style.Triggers><DataTrigger Binding="{Binding Id}" Value="delete"><Setter Property="Foreground" Value="{DynamicResource ErrorText}"/></DataTrigger></Style.Triggers>
     </Style>
-    <Style x:Key="TvList" TargetType="ListBox"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="ItemContainerStyle" Value="{StaticResource SingleChoiceItem}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ScrollViewer Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer></ControlTemplate></Setter.Value></Setter></Style>
+    <Style x:Key="TvList" TargetType="ListBox" BasedOn="{StaticResource Ps5ListBox}"><Setter Property="ItemContainerStyle" Value="{StaticResource SingleChoiceItem}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ScrollViewer Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter/></ScrollViewer></ControlTemplate></Setter.Value></Setter></Style>
   </Window.Resources>
   <Grid x:Name="AppRoot" Background="{DynamicResource WindowSurface}" ClipToBounds="True" KeyboardNavigation.TabNavigation="Cycle">
     <Image x:Name="DecorativeBackground" Source="/AudioSwitcher;component/Assets/PS5/Background.png" Stretch="UniformToFill" IsHitTestVisible="False"/>
@@ -83,7 +33,7 @@
     <Border x:Name="WindowFrame" Panel.ZIndex="1" Background="Transparent" Padding="64,48,80,68" CornerRadius="0" BorderThickness="0">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="75"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-        <TextBlock Text="AudioSwitcher" FontSize="{DynamicResource BrandFont36}" FontWeight="350" VerticalAlignment="Top"/>
+        <TextBlock Text="AudioSwitcher" Style="{StaticResource Ps5ScreenTitle}" VerticalAlignment="Top"/>
         <Grid Grid.Row="1">
           <Grid.ColumnDefinitions><ColumnDefinition x:Name="SectionColumn" Width="320"/><ColumnDefinition x:Name="GapColumn" Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
           <Grid x:Name="SectionHeader" Grid.Column="0">
@@ -97,9 +47,9 @@
             <Grid.RowDefinitions><RowDefinition MinHeight="52" Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <TextBlock Text="Быстрые действия" FontSize="{DynamicResource HeadingFont26}" FontWeight="350"/>
             <StackPanel Grid.Row="1" VerticalAlignment="Top">
-              <Button x:Name="AudioControlCard" Style="{StaticResource TvCard}" Click="AudioCardClick" AutomationProperties.Name="Выбрать устройство звука"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Устройство звука" FontSize="{DynamicResource Font38}" VerticalAlignment="Center"/><TextBlock x:Name="AudioSummary" Grid.Column="1" Margin="24,0,0,0" Text="Загрузка…" FontSize="{DynamicResource Font28}" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="325"/></Grid></Button>
+              <Button x:Name="AudioControlCard" Style="{StaticResource TvCard}" Click="AudioCardClick" AutomationProperties.Name="Выбрать устройство звука"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock x:Name="AudioControlLabel" Text="Устройство звука" Style="{StaticResource Ps5SettingLabel}" VerticalAlignment="Center"/><TextBlock x:Name="AudioSummary" Grid.Column="1" Margin="24,0,0,0" Text="Загрузка…" Style="{StaticResource Ps5SettingValue}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="325"/></Grid></Button>
               <Border x:Name="ControlRowDivider" Height="1" Background="{DynamicResource Line}" Margin="18,0" SnapsToDevicePixels="True"/>
-              <Button x:Name="DisplayControlCard" Style="{StaticResource TvCard}" Click="DisplayCardClick" AutomationProperties.Name="Выбрать основной экран"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Основной экран" FontSize="{DynamicResource Font38}" VerticalAlignment="Center"/><TextBlock x:Name="DisplaySummary" Grid.Column="1" Margin="24,0,0,0" Text="Загрузка…" FontSize="{DynamicResource Font28}" Foreground="{DynamicResource Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="325"/></Grid></Button>
+              <Button x:Name="DisplayControlCard" Style="{StaticResource TvCard}" Click="DisplayCardClick" AutomationProperties.Name="Выбрать основной экран"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Основной экран" Style="{StaticResource Ps5SettingLabel}" VerticalAlignment="Center"/><TextBlock x:Name="DisplaySummary" Grid.Column="1" Margin="24,0,0,0" Text="Загрузка…" Style="{StaticResource Ps5SettingValue}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="325"/></Grid></Button>
             </StackPanel>
           </Grid>
           <controls:ProgramsView x:Name="Programs" Grid.Column="2" Visibility="Collapsed"/>
@@ -108,8 +58,8 @@
     </Border>
     <Border x:Name="OverlayShade" Panel.ZIndex="2" Background="Transparent" Visibility="Collapsed">
       <Grid>
-        <Border x:Name="ModalBackdrop" Background="#B5080A0D" Visibility="Collapsed"/>
-        <Border x:Name="ErrorBackdrop" Background="#B5080A0D" Visibility="{Binding Visibility, ElementName=DetailsSurface}"/>
+        <Border x:Name="ModalBackdrop" Style="{StaticResource Ps5ModalBackdrop}" Visibility="Collapsed"/>
+        <Border x:Name="ErrorBackdrop" Style="{StaticResource Ps5ModalBackdrop}" Visibility="{Binding Visibility, ElementName=DetailsSurface}"/>
         <Border x:Name="DevicePickerOverlay" Style="{StaticResource OverlayCard}" Width="450" Margin="0,40,40,86" Visibility="Collapsed"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><StackPanel Margin="4,5,4,21"><TextBlock x:Name="PickerTitle" Text="Выберите устройство" FontSize="{DynamicResource HeadingFont26}" FontWeight="350" TextWrapping="Wrap"/><TextBlock x:Name="PickerSubtitle" Margin="0,6,0,0" Foreground="{DynamicResource MutedText}" FontSize="{DynamicResource Font28}" TextWrapping="Wrap"/></StackPanel><Grid Grid.Row="1"><ListBox x:Name="Devices" Background="Transparent" BorderThickness="0" Padding="0" PreviewMouseLeftButtonUp="ApplyMouseClick" AutomationProperties.Name="Доступные устройства"><ListBox.ItemTemplate><DataTemplate><Grid VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource Font34}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="{Binding Marker}" Margin="15,0,0,0" Foreground="{DynamicResource MutedText}" FontSize="{DynamicResource Font24}" VerticalAlignment="Center"/><TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding DisplayDetails}" FontSize="{DynamicResource Font28}" Foreground="{DynamicResource MutedText}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox><TextBlock x:Name="Empty" Text="Нет доступных устройств" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Visibility="Collapsed"/></Grid></Grid></Border>
         <Border x:Name="DeleteConfirmationOverlay" Style="{StaticResource OverlayCard}" Width="450" Margin="0,40,40,86" Visibility="Collapsed"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><StackPanel Margin="4,5,4,21"><TextBlock x:Name="DeleteConfirmationTitle" FontSize="{DynamicResource HeadingFont26}" FontWeight="350" TextWrapping="Wrap"/><TextBlock Text="Запись исчезнет из AudioSwitcher. Программа и её файлы останутся на компьютере." Margin="0,6,0,0" Foreground="{DynamicResource MutedText}" FontSize="{DynamicResource Font28}" TextWrapping="Wrap"/></StackPanel><ListBox x:Name="DeleteConfirmationChoices" Grid.Row="1" Style="{StaticResource TvList}" ItemContainerStyle="{StaticResource DeleteChoiceItem}" PreviewMouseLeftButtonUp="DeleteConfirmationMouseClick" AutomationProperties.Name="Подтверждение удаления"><ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource Font34}" TextWrapping="Wrap"/></DataTemplate></ListBox.ItemTemplate></ListBox></Grid></Border>
         <Border x:Name="SettingsSurface" Style="{StaticResource SettingsPane}" Visibility="Collapsed"><Grid><Grid.RowDefinitions><RowDefinition MinHeight="69" Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><StackPanel><TextBlock Text="Настройки" FontSize="{DynamicResource HeadingFont26}" FontWeight="350"/><TextBlock Text="При переносе уже запущенного приложения" Foreground="{DynamicResource MutedText}" FontSize="{DynamicResource Font28}" Margin="0,6,0,0" TextWrapping="Wrap"/></StackPanel><Grid Grid.Row="1"><ListBox x:Name="SettingsChoices" Visibility="Collapsed" AutomationProperties.Name="Поведение после переноса"><ListBoxItem Tag="Keep"/><ListBoxItem Tag="Close"/></ListBox><ToggleButton x:Name="SettingsToggle" Style="{StaticResource SettingsToggleRow}" HorizontalAlignment="Stretch" VerticalAlignment="Top" Click="SettingsToggleClick" AutomationProperties.Name="Переключаться на приложение"/></Grid></Grid></Border>
