@@ -89,17 +89,39 @@ internal static class FixedDesignChecks
             Require(footer != null && overlay != null && Panel.GetZIndex(footer) > Panel.GetZIndex(overlay), "Footer is not above overlays");
 
             var settingsToggle = (ToggleButton)window.FindName("SettingsToggle");
+            Call(window, "OpenSettings");
+            window.UpdateLayout();
             Require(settingsToggle.RenderTransform is not ScaleTransform, "Settings toggle focus still scales the row");
             settingsToggle.ApplyTemplate();
             var toggleState = settingsToggle.Template.FindName("ToggleState", settingsToggle) as TextBlock;
             var toggleTrack = settingsToggle.Template.FindName("Track", settingsToggle) as Border;
             var toggleThumb = settingsToggle.Template.FindName("Thumb", settingsToggle) as Border;
+            var settingsSurface = (Border)window.FindName("SettingsSurface");
+            var settingsGrid = (Grid)settingsSurface.Child;
+            var settingsText = VisualText(settingsSurface).ToArray();
+            Require(settingsGrid.RowDefinitions[0].MinHeight == 52,
+                "Settings title spacing does not match the other sections");
+            Require(!settingsText.Contains("При переносе уже запущенного приложения")
+                && settingsText.Contains("Для уже запущенных приложений")
+                && !settingsText.Any(text => text.Contains("AudioSwitcher закроется", StringComparison.Ordinal)),
+                "Settings page still renders the removed introduction or the old helper text");
             Require(toggleState?.Text == "Выкл.", "Toggle has no explicit off label");
-            Require(toggleTrack?.Width == 70 && toggleTrack.Height == 28 && toggleThumb?.Opacity == 0,
-                "Toggle off state does not match the PS5 settings switch silhouette");
+            Require(toggleTrack?.Width == 100 && toggleTrack.Height == 42
+                && toggleThumb?.Width == 36 && toggleThumb.Height == 36
+                && toggleThumb.HorizontalAlignment == HorizontalAlignment.Left
+                && toggleThumb.BorderThickness == new Thickness(3)
+                && toggleThumb.Background is SolidColorBrush offThumb && offThumb.Color.A == 0,
+                "Toggle off state is not the outlined PS5 thumb on the left");
             settingsToggle.IsChecked = true;
-            Require(toggleState!.Text == "Вкл." && toggleThumb!.Opacity == 1 && toggleThumb.HorizontalAlignment == HorizontalAlignment.Right,
+            Require(toggleState!.Text == "Вкл."
+                && toggleThumb!.HorizontalAlignment == HorizontalAlignment.Right
+                && toggleThumb.Background is SolidColorBrush onThumb && onThumb.Color.A > 0,
                 "Toggle has no explicit PS5 on state");
+            Call(window, "ToggleSetting");
+            window.UpdateLayout();
+            Require(settingsSurface.IsVisible && settingsToggle.IsKeyboardFocused,
+                "Changing the setting closes the settings page or loses toggle focus");
+            Call(window, "CloseDetails", true);
             Require((double)app.FindResource("BadgeSize") >= 21, "Gamepad badges are too small for TV viewing");
             Require(window.Width <= 1500, $"Window remains too wide at {window.Width}");
 

@@ -390,7 +390,8 @@ public partial class MainWindow : Window
             settingsStore.Save(new(behavior));
             Programs.MoveBehavior = behavior;
             SetStatus("Настройка сохранена");
-            CloseDetails();
+            UpdateSettingsAutomationName();
+            SettingsToggle.Focus();
         }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { ShowError("Не удалось сохранить настройку", ex.Message); }
     }

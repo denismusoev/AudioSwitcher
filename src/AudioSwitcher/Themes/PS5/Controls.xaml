@@ -189,15 +189,15 @@
               <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="Переключаться на приложение" Style="{StaticResource Ps5SettingLabel}" TextWrapping="Wrap"/>
-                <TextBlock Text="Для уже запущенных приложений; AudioSwitcher закроется после успешного переноса"
+                <TextBlock Text="Для уже запущенных приложений"
                            Style="{StaticResource Ps5SettingValue}" Margin="0,4,0,0" TextWrapping="Wrap"/>
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="21,0,0,0">
                 <TextBlock x:Name="ToggleState" Text="Выкл." Style="{StaticResource Ps5SettingValue}"
                            VerticalAlignment="Center" Margin="0,0,12,0"/>
-                <Border x:Name="Track" Width="70" Height="28" CornerRadius="14" Background="#8C8C8C" VerticalAlignment="Center">
-                  <Border x:Name="Thumb" Width="24" Height="24" CornerRadius="12" Background="{DynamicResource Ps5PrimaryText}"
-                          HorizontalAlignment="Right" Margin="2" Opacity="0"/>
+                <Border x:Name="Track" Width="100" Height="42" CornerRadius="21" Background="#242733" VerticalAlignment="Center">
+                  <Border x:Name="Thumb" Width="36" Height="36" CornerRadius="18" Background="Transparent"
+                          BorderBrush="#8C8E94" BorderThickness="3" HorizontalAlignment="Left" Margin="3"/>
                 </Border>
               </StackPanel>
             </Grid>
@@ -206,7 +206,8 @@
           </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="Thumb" Property="Opacity" Value="1"/>
+              <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+              <Setter TargetName="Thumb" Property="Background" Value="#D4D4D4"/>
               <Setter TargetName="ToggleState" Property="Text" Value="Вкл."/>
               <Setter TargetName="ToggleState" Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
             </Trigger>
