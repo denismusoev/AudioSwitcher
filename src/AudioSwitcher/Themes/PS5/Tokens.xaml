@@ -16,7 +16,11 @@
   <SolidColorBrush x:Key="Ps5ErrorText" Color="#E7AAA6"/>
 
   <Thickness x:Key="Ps5FocusThickness">3</Thickness>
+  <Thickness x:Key="Ps5ListRowPadding">18,18,18,22</Thickness>
+  <Thickness x:Key="Ps5ListSecondaryMargin">0,4,0,0</Thickness>
   <CornerRadius x:Key="Ps5FocusCornerRadius">2</CornerRadius>
   <sys:Double x:Key="Ps5SettingsRowHeight">72</sys:Double>
+  <sys:Double x:Key="Ps5ListPrimarySlotHeight">32</sys:Double>
+  <sys:Double x:Key="Ps5ListSecondarySlotHeight">24</sys:Double>
   <sys:Double x:Key="Ps5DrawerWidth">450</sys:Double>
 </ResourceDictionary>

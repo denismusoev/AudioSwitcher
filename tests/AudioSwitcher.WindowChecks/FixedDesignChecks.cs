@@ -96,6 +96,9 @@ internal static class FixedDesignChecks
             var toggleState = settingsToggle.Template.FindName("ToggleState", settingsToggle) as TextBlock;
             var toggleTrack = settingsToggle.Template.FindName("Track", settingsToggle) as Border;
             var toggleThumb = settingsToggle.Template.FindName("Thumb", settingsToggle) as Border;
+            var toggleContent = settingsToggle.Template.FindName("ToggleContent", settingsToggle) as Grid;
+            var togglePrimarySlot = settingsToggle.Template.FindName("TogglePrimarySlot", settingsToggle) as Border;
+            var toggleSecondarySlot = settingsToggle.Template.FindName("ToggleSecondarySlot", settingsToggle) as Border;
             var settingsSurface = (Border)window.FindName("SettingsSurface");
             var settingsGrid = (Grid)settingsSurface.Child;
             var settingsText = VisualText(settingsSurface).ToArray();
@@ -106,6 +109,13 @@ internal static class FixedDesignChecks
                 && !settingsText.Any(text => text.Contains("AudioSwitcher закроется", StringComparison.Ordinal)),
                 "Settings page still renders the removed introduction or the old helper text");
             Require(toggleState?.Text == "Выкл.", "Toggle has no explicit off label");
+            Require(toggleContent?.Margin == new Thickness(18, 18, 18, 22)
+                && togglePrimarySlot?.MinHeight == 32
+                && toggleSecondarySlot?.MinHeight == 24
+                && toggleSecondarySlot.Margin == new Thickness(0, 4, 0, 0),
+                "Settings row does not use the shared optical 18/18/18/22 / 32+4+24 composition");
+            Require(Math.Abs(settingsToggle.ActualHeight - 100) < 0.5,
+                $"Settings row is {settingsToggle.ActualHeight:0.##} DIPs instead of 100");
             Require(toggleTrack?.Width == 100 && toggleTrack.Height == 42
                 && toggleThumb?.Width == 36 && toggleThumb.Height == 36
                 && toggleThumb.HorizontalAlignment == HorizontalAlignment.Left
@@ -134,6 +144,75 @@ internal static class FixedDesignChecks
             Require(Grid.GetRow(launchList) == 1, "Launch catalogue can overlap its heading");
             if (launchList.Margin.Top != runningList.Margin.Top)
                 polishFailures.Add($"Launch list starts at {launchList.Margin.Top:0.#} DIPs while Running starts at {runningList.Margin.Top:0.#}");
+
+            var programActions = (ListBox)programsView.FindName("ProgramActions");
+            var standardLists = new (string Name, ListBox List)[]
+            {
+                ("Running", runningList),
+                ("Launch", launchList),
+                ("Program actions", programActions),
+                ("Devices", (ListBox)window.FindName("Devices")),
+                ("Window choices", (ListBox)window.FindName("WindowChoices")),
+                ("Delete confirmation", (ListBox)window.FindName("DeleteConfirmationChoices")),
+                ("Settings choices", (ListBox)window.FindName("SettingsChoices"))
+            };
+            foreach (var (name, list) in standardLists)
+            {
+                var style = list.ItemContainerStyle ?? (Style)list.FindResource(typeof(ListBoxItem));
+                var probe = new ListBoxItem { Style = style };
+                Require(probe.MinHeight == 72
+                    && probe.Padding == new Thickness(18, 18, 18, 22)
+                    && probe.Margin == new Thickness(0, 2, 0, 2)
+                    && probe.HorizontalContentAlignment == HorizontalAlignment.Stretch,
+                    $"{name} row does not use the shared 72 DIP / optical 18/18/18/22 geometry");
+            }
+            var primarySlot = new Border { Style = (Style)app.FindResource("Ps5ListPrimarySlot") };
+            var secondarySlot = new Border { Style = (Style)app.FindResource("Ps5ListSecondarySlot") };
+            Require(primarySlot.MinHeight == 32,
+                $"Primary list-row slot is {primarySlot.MinHeight:0.##} DIPs instead of 32");
+            Require(secondarySlot.MinHeight == 24 && secondarySlot.Margin == new Thickness(0, 4, 0, 0),
+                $"Secondary list-row slot is {secondarySlot.MinHeight:0.##} DIPs with margin {secondarySlot.Margin}");
+
+            var variableRows = new DeviceRowsPanel();
+            var shortBefore = new Border { Height = 72 };
+            var expanded = new Border { Height = 100 };
+            var shortAfter = new Border { Height = 72 };
+            variableRows.Children.Add(shortBefore);
+            variableRows.Children.Add(expanded);
+            variableRows.Children.Add(shortAfter);
+            variableRows.Measure(new Size(320, 300));
+            variableRows.Arrange(new Rect(0, 0, 320, 300));
+            Require(shortBefore.ActualHeight == 72
+                && expanded.ActualHeight == 100
+                && shortAfter.ActualHeight == 72,
+                $"Variable rows were flattened to {shortBefore.ActualHeight:0.##}, {expanded.ActualHeight:0.##}, {shortAfter.ActualHeight:0.##}");
+            Require(shortBefore.TranslatePoint(new Point(), variableRows).Y == 0
+                && expanded.TranslatePoint(new Point(), variableRows).Y == 72
+                && shortAfter.TranslatePoint(new Point(), variableRows).Y == 172,
+                "Variable rows do not retain cumulative individual offsets");
+
+            Call(window, "SwitchSection", AppSection.Launch);
+            launchList.ItemsSource = new[] { new { DisplayName = "Программа", DisplayDetails = "Дополнительные сведения" } };
+            window.UpdateLayout();
+            var launchRow = (ListBoxItem)launchList.ItemContainerGenerator.ContainerFromIndex(0);
+            launchRow.ApplyTemplate();
+            window.UpdateLayout();
+            var launchContent = VisualChild<ContentPresenter>(launchRow)
+                ?? throw new Exception("Launch row content presenter is missing");
+            var launchContentOrigin = launchContent.TranslatePoint(new Point(), launchRow);
+            var launchContentRight = launchRow.ActualWidth - launchContentOrigin.X - launchContent.ActualWidth;
+            var launchContentBottom = launchRow.ActualHeight - launchContentOrigin.Y - launchContent.ActualHeight;
+            Require(Math.Abs(launchContentOrigin.X - 18) < 0.5
+                && Math.Abs(launchContentRight - 18) < 0.5
+                && Math.Abs(launchContentOrigin.Y - 18) < 0.5
+                && Math.Abs(launchContentBottom - 22) < 0.5,
+                $"Launch row content insets are L{launchContentOrigin.X:0.##}, T{launchContentOrigin.Y:0.##}, R{launchContentRight:0.##}, B{launchContentBottom:0.##}");
+            var launchContentGrid = VisualChild<Grid>(launchContent)
+                ?? throw new Exception("Launch row content grid is missing");
+            Require(launchContentGrid.RowDefinitions[0].Height.IsAuto
+                && launchContentGrid.RowDefinitions[1].Height.IsAuto,
+                "Launch row content does not use adaptive rows");
+            Call(window, "SwitchSection", AppSection.Control);
 
             var primaryCommand = (Button)window.FindName("PrimaryCommand");
             primaryCommand.ApplyTemplate();

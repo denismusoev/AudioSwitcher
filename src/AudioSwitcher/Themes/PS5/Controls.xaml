@@ -185,13 +185,19 @@
         <ControlTemplate TargetType="ToggleButton">
           <Grid SnapsToDevicePixels="True">
             <Border x:Name="GlassSweep" Style="{StaticResource Ps5GlassSweep}"/>
-            <Grid Margin="18,0">
+            <Grid x:Name="ToggleContent" Margin="{StaticResource Ps5ListRowPadding}">
               <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-              <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="Переключаться на приложение" Style="{StaticResource Ps5SettingLabel}" TextWrapping="Wrap"/>
-                <TextBlock Text="Для уже запущенных приложений"
-                           Style="{StaticResource Ps5SettingValue}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-              </StackPanel>
+              <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Border x:Name="TogglePrimarySlot" MinHeight="{StaticResource Ps5ListPrimarySlotHeight}" VerticalAlignment="Center">
+                  <TextBlock Text="Переключаться на приложение" Style="{StaticResource Ps5SettingLabel}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="ToggleSecondarySlot" Grid.Row="1" MinHeight="{StaticResource Ps5ListSecondarySlotHeight}"
+                        Margin="{StaticResource Ps5ListSecondaryMargin}" VerticalAlignment="Center">
+                  <TextBlock Text="Для уже запущенных приложений" Style="{StaticResource Ps5SettingValue}"
+                             TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </Border>
+              </Grid>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="21,0,0,0">
                 <TextBlock x:Name="ToggleState" Text="Выкл." Style="{StaticResource Ps5SettingValue}"
                            VerticalAlignment="Center" Margin="0,0,12,0"/>

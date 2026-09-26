@@ -126,17 +126,8 @@ internal static class ApprovedDesignChecks
                             $"Launch subtitle is still visible: '{subtitle.Text}'");
                     });
 
-                    Check("Launch first-row content starts at the same visual offset as other main pages", () =>
+                    Check("Launch path grows the row below an unchanged program title", () =>
                     {
-                        Call(window, "SwitchSection", AppSection.Control);
-                        var controlSurface = (Grid)window.FindName("ControlSurface");
-                        var controlTitle = Descendants<TextBlock>(controlSurface).Single(text => text.Text == "Быстрые действия");
-                        var audioCard = (Button)window.FindName("AudioControlCard");
-                        var audioLabel = Descendants<TextBlock>(audioCard).Single(text => text.Text == "Устройство звука");
-                        window.UpdateLayout();
-                        double controlOffset = audioLabel.TranslatePoint(new Point(), controlSurface).Y
-                            - controlTitle.TranslatePoint(new Point(), controlSurface).Y;
-
                         Call(window, "SwitchSection", AppSection.Running);
                         var programs = (ProgramsView)window.FindName("Programs");
                         var runningList = (ListBox)programs.FindName("RunningList");
@@ -155,11 +146,16 @@ internal static class ApprovedDesignChecks
                         var launchTitle = (TextBlock)programs.FindName("ListTitle");
                         var launchRow = (ListBoxItem)launchList.ItemContainerGenerator.ContainerFromIndex(0);
                         var launchLabel = Descendants<TextBlock>(launchRow).Single(text => text.Text == "Программа");
+                        var launchPath = Descendants<TextBlock>(launchRow).Single(text => text.Text == "Путь");
                         double launchOffset = launchLabel.TranslatePoint(new Point(), programs).Y
                             - launchTitle.TranslatePoint(new Point(), programs).Y;
 
-                        Require(Math.Abs(controlOffset - runningOffset) < 0.5 && Math.Abs(controlOffset - launchOffset) < 0.5,
-                            $"Control offset is {controlOffset:0.##}; running offset is {runningOffset:0.##}; launch offset is {launchOffset:0.##}");
+                        Require(Math.Abs(runningOffset - launchOffset) < 0.5,
+                            $"Running title offset is {runningOffset:0.##}; launch title offset is {launchOffset:0.##}");
+                        Require(launchRow.ActualHeight > runningRow.ActualHeight,
+                            $"Launch row height {launchRow.ActualHeight:0.##} did not exceed running row height {runningRow.ActualHeight:0.##}");
+                        Require(launchPath.TranslatePoint(new Point(), launchRow).Y >= launchLabel.TranslatePoint(new Point(0, launchLabel.ActualHeight), launchRow).Y,
+                            "Launch path does not extend below the program title");
                     });
 
                     Check("Launch edit command opens the selected entry in the editor", () =>
