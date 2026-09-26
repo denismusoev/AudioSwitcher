@@ -30,14 +30,12 @@
         <MultiDataTrigger.EnterActions>
           <BeginStoryboard x:Name="StartPs5Border">
             <Storyboard>
-              <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" BeginTime="0:0:0.1" Duration="0:0:0.3"/>
               <DoubleAnimation Storyboard.TargetProperty="(Border.BorderBrush).(Brush.RelativeTransform).(RotateTransform.Angle)"
                                From="0" To="359" Duration="0:0:4" RepeatBehavior="Forever"/>
             </Storyboard>
           </BeginStoryboard>
         </MultiDataTrigger.EnterActions>
         <MultiDataTrigger.ExitActions>
-          <BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0" Duration="0:0:0.1"/></Storyboard></BeginStoryboard>
           <StopStoryboard BeginStoryboardName="StartPs5Border"/>
         </MultiDataTrigger.ExitActions>
       </MultiDataTrigger>

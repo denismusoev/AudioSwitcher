@@ -266,12 +266,27 @@ internal static class FixedDesignChecks
                 running.SelectedIndex = 0;
                 running.UpdateLayout();
                 programs.RestoreFocus();
+                var initialRow = (ListBoxItem)running.ItemContainerGenerator.ContainerFromIndex(0);
+                initialRow.ApplyTemplate();
+                var initialRowFrame = (Border)initialRow.Template.FindName("Row", initialRow);
                 programs.Move(1);
                 window.UpdateLayout();
                 var selectedRow = (ListBoxItem)running.ItemContainerGenerator.ContainerFromIndex(1);
                 Require(selectedRow.IsKeyboardFocused, "Moving in a section leaves focus on the list instead of the selected row");
                 selectedRow.ApplyTemplate();
                 var rowFrame = (Border)selectedRow.Template.FindName("Row", selectedRow);
+                var focusTransitionPump = new DispatcherFrame();
+                var focusTransitionTimer = new DispatcherTimer(DispatcherPriority.Background)
+                {
+                    Interval = TimeSpan.FromMilliseconds(120)
+                };
+                focusTransitionTimer.Tick += (_, _) => { focusTransitionTimer.Stop(); focusTransitionPump.Continue = false; };
+                focusTransitionTimer.Start();
+                Dispatcher.PushFrame(focusTransitionPump);
+                Require(initialRowFrame.Opacity == 0 && !DependencyPropertyHelper.GetValueSource(initialRowFrame, UIElement.OpacityProperty).IsAnimated,
+                    $"Previous row focus frame remains visible or animated after focus moves: opacity={initialRowFrame.Opacity:0.###}");
+                Require(rowFrame.Opacity == 1 && !DependencyPropertyHelper.GetValueSource(rowFrame, UIElement.OpacityProperty).IsAnimated,
+                    $"New row focus frame is not immediately stable: opacity={rowFrame.Opacity:0.###}");
                 RequireFocusFrame(rowFrame, focusOutline, focusThickness, focusCorner, "List row");
                 RequireAnimatedPs5Focus(selectedRow, rowFrame, "List row");
                 if (VisualBorders(selectedRow).Any(border => border.ActualHeight is > 0 and <= 1.5))
