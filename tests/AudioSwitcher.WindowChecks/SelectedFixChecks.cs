@@ -255,28 +255,26 @@ internal static class SelectedFixChecks
                         return Task.CompletedTask;
                     });
 
-                    await Check("Error closes back to the invoking device picker", () =>
+                    await Check("Error closes back to the invoking device picker", async () =>
                     {
-                        Call(window, "OpenDevicePicker", false);
+                        await (Task)Call(window, "OpenDevicePickerAsync", false)!;
                         Call(window, "ShowError", "Ошибка", "Подробности");
                         Call(window, "Execute", PadAction.Close); window.UpdateLayout();
                         var picker = (FrameworkElement)window.FindName("DevicePickerOverlay");
                         var devices = (ListBox)window.FindName("Devices");
                         Require(picker.IsVisible && devices.IsKeyboardFocusWithin, "Device picker context or focus was not restored");
                         Call(window, "CloseDetails");
-                        return Task.CompletedTask;
                     });
 
-                    await Check("Overlay disables background focus navigation", () =>
+                    await Check("Overlay disables background focus navigation", async () =>
                     {
-                        Call(window, "OpenDevicePicker", false); window.UpdateLayout();
+                        await (Task)Call(window, "OpenDevicePickerAsync", false)!; window.UpdateLayout();
                         var frame = (FrameworkElement)window.FindName("WindowFrame");
                         var rootElement = (FrameworkElement)window.FindName("AppRoot");
                         Require(!frame.IsEnabled, "Background surface remains enabled under the overlay");
                         Require(KeyboardNavigation.GetTabNavigation(rootElement) == KeyboardNavigationMode.Cycle,
                             "Window focus traversal is not cyclic while modal UI is present");
                         Call(window, "CloseDetails");
-                        return Task.CompletedTask;
                     });
 
                     await Check("Running snapshot refresh preserves the focused row", async () =>
@@ -312,6 +310,127 @@ internal static class SelectedFixChecks
                         var method = typeof(MainWindow).GetMethod("RefreshControlAsync", BindingFlags.Instance | BindingFlags.NonPublic);
                         Require(method != null && typeof(Task).IsAssignableFrom(method.ReturnType), "Control refresh still runs synchronously on the UI thread");
                         await (Task)method!.Invoke(window, [true])!;
+                    });
+
+                    await Check("Device picker exposes an asynchronous UI contract", () =>
+                    {
+                        var method = typeof(MainWindow).GetMethod("OpenDevicePickerAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Require(method != null && typeof(Task).IsAssignableFrom(method.ReturnType), "Device picker still enumerates devices synchronously on the UI thread");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Device apply exposes an asynchronous UI contract", () =>
+                    {
+                        var method = typeof(MainWindow).GetMethod("ApplySelected", BindingFlags.Instance | BindingFlags.NonPublic);
+                        Require(method != null && typeof(Task).IsAssignableFrom(method.ReturnType), "Device apply no longer exposes an awaitable UI contract");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Faulted background tasks are observed exactly once", () =>
+                    {
+                        var observer = typeof(MainWindow).Assembly.GetType("AudioSwitcher.TaskObserver")
+                            ?? throw new Exception("Task observer is missing");
+                        var observe = observer.GetMethod("Observe", BindingFlags.Static | BindingFlags.NonPublic)
+                            ?? throw new Exception("Task observer entry point is missing");
+                        Exception? observed = null;
+                        observe.Invoke(null, [Task.FromException(new InvalidOperationException("background failure")), (Action<Exception>)(error => observed = error)]);
+                        Require(observed is InvalidOperationException { Message: "background failure" }, "Faulted task was not observed through the failure callback");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Diagnostic logging includes crash context and bounds repeated writes", () =>
+                    {
+                        var logger = typeof(MainWindow).Assembly.GetType("AudioSwitcher.DiagnosticLog")
+                            ?? throw new Exception("Diagnostic logger is missing");
+                        var format = logger.GetMethod("FormatEntry", BindingFlags.Static | BindingFlags.NonPublic)
+                            ?? throw new Exception("Diagnostic entry formatter is missing");
+                        Exception captured;
+                        try { throw new InvalidOperationException("outer failure", new FormatException("inner failure")); }
+                        catch (Exception error) { captured = error; }
+                        var context = new Dictionary<string, object?> { ["pid"] = 42, ["hwnd"] = "0x123", ["deviceId"] = "endpoint-1" };
+                        string entry = (string)format.Invoke(null, ["ERROR", "test.operation", captured, context, 3])!;
+                        foreach (string required in new[] { "severity=ERROR", "operation=test.operation", "InvalidOperationException", "outer failure", "FormatException", "inner failure", "hresult=0x", "processId=", "managedThreadId=", "appVersion=", "windowsVersion=", "pid=42", "hwnd=0x123", "deviceId=endpoint-1", "suppressed=3" })
+                            Require(entry.Contains(required, StringComparison.Ordinal), "Diagnostic entry omitted " + required);
+
+                        string key = Guid.NewGuid().ToString("N");
+                        var shouldWrite = logger.GetMethod("ShouldWrite", BindingFlags.Static | BindingFlags.NonPublic)
+                            ?? throw new Exception("Diagnostic rate limiter is missing");
+                        object?[] first = [key, 1_000L, 0];
+                        object?[] repeated = [key, 1_001L, 0];
+                        object?[] resumed = [key, 31_001L, 0];
+                        Require((bool)shouldWrite.Invoke(null, first)!, "First diagnostic was suppressed");
+                        Require(!(bool)shouldWrite.Invoke(null, repeated)!, "Repeated diagnostic was not suppressed");
+                        Require((bool)shouldWrite.Invoke(null, resumed)! && (int)resumed[2]! == 1, "Suppressed diagnostic count was lost");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Diagnostic log rotation retains at most five files", () =>
+                    {
+                        var logger = typeof(MainWindow).Assembly.GetType("AudioSwitcher.DiagnosticLog")!;
+                        var append = logger.GetMethod("TryAppend", BindingFlags.Static | BindingFlags.NonPublic)
+                            ?? throw new Exception("Diagnostic append boundary is missing");
+                        string logRoot = Path.Combine(root, "logs");
+                        for (int i = 0; i < 8; i++)
+                            Require((bool)append.Invoke(null, [logRoot, new string((char)('a' + i), 96) + Environment.NewLine, 128L, 5])!, "Test log append failed");
+                        int files = Directory.GetFiles(logRoot, "AudioSwitcher*.log").Length;
+                        Require(files is >= 2 and <= 5, $"Rotation retained {files} files");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Application exposes all three global exception handlers", () =>
+                    {
+                        foreach (string handler in new[] { "OnDispatcherUnhandledException", "OnDomainUnhandledException", "OnUnobservedTaskException" })
+                            Require(typeof(App).GetMethod(handler, BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic) != null,
+                                "Missing global handler " + handler);
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Malformed interface text scale falls back to 100 percent", () =>
+                    {
+                        var settingsType = typeof(MainWindow).Assembly.GetType("AudioSwitcher.InterfaceSettings")
+                            ?? throw new Exception("InterfaceSettings type is missing");
+                        var convert = settingsType.GetMethod("ConvertTextScale", BindingFlags.Static | BindingFlags.NonPublic)
+                            ?? throw new Exception("Text scale conversion boundary is missing");
+                        foreach (object malformed in new object[] { "not-a-number", new object(), DBNull.Value })
+                        {
+                            var scale = (double)convert.Invoke(null, [malformed])!;
+                            Require(scale == 1, $"Malformed text scale {malformed} produced {scale}");
+                        }
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Disposed interface settings ignore queued callbacks", async () =>
+                    {
+                        var settingsType = typeof(MainWindow).Assembly.GetType("AudioSwitcher.InterfaceSettings")
+                            ?? throw new Exception("InterfaceSettings type is missing");
+                        int changes = 0;
+                        var settings = (IDisposable)Activator.CreateInstance(settingsType, [app, (Action)(() => changes++)])!;
+                        int beforeDispose = changes;
+                        settings.Dispose();
+                        settings.Dispose();
+                        settingsType.GetMethod("Schedule", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(settings, null);
+                        await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+                        Require(changes == beforeDispose, "A disposed InterfaceSettings instance invoked its callback");
+                    });
+
+                    await Check("Monitor API failure preserves XAML startup placement", () =>
+                    {
+                        var apply = typeof(MainWindow).GetMethod("ApplyPreferredSize", BindingFlags.Instance | BindingFlags.NonPublic,
+                            null, [typeof(Func<(double Width, double Height)>)], null)
+                            ?? throw new Exception("Testable preferred-size boundary is missing");
+                        double width = window.Width, height = window.Height;
+                        var startup = window.WindowStartupLocation;
+                        Func<(double Width, double Height)> fail = () => throw new System.ComponentModel.Win32Exception(5);
+                        apply.Invoke(window, [fail]);
+                        Require(window.Width == width && window.Height == height, "Monitor failure changed the XAML window size");
+                        Require(window.WindowStartupLocation == startup, "Monitor failure changed WindowStartupLocation");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Game synchronization is inert after window lifetime cancellation", async () =>
+                    {
+                        window.Close();
+                        await window.SynchronizeGamesAsync(quiet: true);
                     });
                 }
                 finally

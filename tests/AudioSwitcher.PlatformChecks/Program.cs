@@ -9,6 +9,7 @@ internal static class Program
     private static int Main(string[] args)
     {
         bool mutate = args.Contains("--switch-and-restore");
+        bool reliabilityOnly = args.Contains("--reliability-only");
         if (args.Contains("--trace-display-test")) { TraceDisplayTest(); return 0; }
         var audio = new AudioService();
         var displays = new DisplayService();
@@ -17,6 +18,27 @@ internal static class Program
         {
             try { test(); passed++; Console.WriteLine($"PASS {name}"); }
             catch (Exception e) { failed++; Console.WriteLine($"FAIL {name}: {e}"); }
+        }
+        Check("Skip one disappearing audio endpoint", () => {
+            var skipped = new List<uint>();
+            var values = AudioService.CollectAvailable(3,
+                index => index == 1 ? throw new COMException("Endpoint disappeared") : index,
+                (index, _) => skipped.Add(index));
+            if (!values.SequenceEqual([0u, 2u]) || !skipped.SequenceEqual([1u]))
+                throw new Exception("Per-endpoint failure did not preserve remaining devices");
+        });
+        Check("Do not hide non-endpoint enumeration failures", () => {
+            try
+            {
+                AudioService.CollectAvailable<int>(1, _ => throw new InvalidOperationException("operation failed"), (_, _) => { });
+            }
+            catch (InvalidOperationException) { return; }
+            throw new Exception("Operation failure was swallowed");
+        });
+        if (reliabilityOnly)
+        {
+            Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: 4");
+            return failed == 0 ? 0 : 1;
         }
         Check("Enumerate actual audio outputs", () => { if (audio.GetDevices().Count == 0) throw new Exception("No audio outputs"); });
         Check("Enumerate actual monitors", () => { if (displays.GetDevices().Count == 0) throw new Exception("No monitors"); });

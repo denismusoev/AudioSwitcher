@@ -112,11 +112,11 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
     }
     public void Close() { if (!saving) { Visibility = Visibility.Collapsed; Completed?.Invoke(); } }
     private void CancelClick(object sender, RoutedEventArgs e) => Close();
-    private void DialogKeyDown(object sender, KeyEventArgs e)
+    private async void DialogKeyDown(object sender, KeyEventArgs e)
     {
         if (saving || (e.Key == Key.Enter && e.IsRepeat)) e.Handled = true;
         else if (e.Key == Key.Escape) { if (!EndFieldInput()) Close(); e.Handled = true; }
-        else if (e.Key == Key.F2) { _ = SaveAsync(); e.Handled = true; }
+        else if (e.Key == Key.F2) { await SaveAsync(); e.Handled = true; }
         else if (e.Key == Key.Enter) { ConfirmField(); e.Handled = true; }
         else if (!IsTextEditing && e.Key is Key.Up or Key.Down or Key.Left or Key.Right)
         {

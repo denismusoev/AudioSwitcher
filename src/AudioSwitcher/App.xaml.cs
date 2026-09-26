@@ -7,9 +7,11 @@ namespace AudioSwitcher;
 public partial class App : Application
 {
     private Mutex? instance;
+    private bool globalHandlersRegistered;
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        RegisterGlobalHandlers();
         // Diagnostics only enumerate devices; they never modify Windows settings.
         if (e.Args.Length == 2 && e.Args[0] == "--diagnostics")
         {
@@ -24,10 +26,51 @@ public partial class App : Application
         }
         instance = new Mutex(true, "Local\\AudioSwitcher.Portable", out bool first);
         if (!first) { Shutdown(); return; }
-        DispatcherUnhandledException += (_, args) => { MessageBox.Show(args.Exception.Message, "AudioSwitcher"); args.Handled = true; Shutdown(1); };
         var window = new MainWindow();
         window.Show();
-        _ = window.SynchronizeGamesAsync(quiet: true);
     }
-    protected override void OnExit(ExitEventArgs e) { instance?.Dispose(); base.OnExit(e); }
+
+    private void RegisterGlobalHandlers()
+    {
+        if (globalHandlersRegistered) return;
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+        globalHandlersRegistered = true;
+    }
+
+    private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
+    {
+        args.Handled = true;
+        DiagnosticLog.Critical("application.dispatcher_unhandled", args.Exception);
+        try { MessageBox.Show(args.Exception.Message, "AudioSwitcher"); }
+        catch (Exception error) { DiagnosticLog.Error("application.crash_dialog", error); }
+        Shutdown(1);
+    }
+
+    private static void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs args)
+    {
+        var error = args.ExceptionObject as Exception ?? new Exception($"Unhandled object: {args.ExceptionObject?.GetType().FullName ?? "null"}");
+        DiagnosticLog.Critical("application.domain_unhandled", error,
+            new Dictionary<string, object?> { ["isTerminating"] = args.IsTerminating });
+    }
+
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs args)
+    {
+        DiagnosticLog.Error("application.task_unobserved", args.Exception);
+        args.SetObserved();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        if (globalHandlersRegistered)
+        {
+            DispatcherUnhandledException -= OnDispatcherUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException -= OnDomainUnhandledException;
+            TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
+            globalHandlersRegistered = false;
+        }
+        instance?.Dispose();
+        base.OnExit(e);
+    }
 }

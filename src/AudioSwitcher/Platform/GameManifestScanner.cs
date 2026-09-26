@@ -8,7 +8,7 @@ public sealed record GameManifestEntry(string Name, string ExecutablePath, strin
 
 public interface IGameManifestScanner
 {
-    IReadOnlyList<GameManifestEntry> Scan();
+    IReadOnlyList<GameManifestEntry> Scan(CancellationToken cancellationToken = default);
 }
 
 public sealed class GameManifestScanner : IGameManifestScanner
@@ -19,8 +19,9 @@ public sealed class GameManifestScanner : IGameManifestScanner
 
     public GameManifestScanner(string rootPath = @"E:\Games") => this.rootPath = Path.GetFullPath(rootPath);
 
-    public IReadOnlyList<GameManifestEntry> Scan()
+    public IReadOnlyList<GameManifestEntry> Scan(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         string[] folders;
         try { folders = Directory.GetDirectories(rootPath); }
         catch (Exception error) when (IsFileError(error)) { return []; }
@@ -28,16 +29,20 @@ public sealed class GameManifestScanner : IGameManifestScanner
         var games = new List<GameManifestEntry>();
         foreach (var folder in folders)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 var manifestPath = Path.Combine(folder, ManifestFileName);
+                cancellationToken.ThrowIfCancellationRequested();
                 var manifest = JsonSerializer.Deserialize<GameManifest>(File.ReadAllText(manifestPath), JsonOptions);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (manifest is null || string.IsNullOrWhiteSpace(manifest.Name) || string.IsNullOrWhiteSpace(manifest.Executable)
                     || Path.IsPathRooted(manifest.Executable)) continue;
 
                 var gameFolder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
                 var executable = Path.GetFullPath(manifest.Executable, gameFolder);
                 var relative = Path.GetRelativePath(gameFolder, executable);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
                     || !string.Equals(Path.GetExtension(executable), ".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(executable)) continue;
 

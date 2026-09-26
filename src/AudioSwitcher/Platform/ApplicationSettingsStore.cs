@@ -9,8 +9,8 @@ public sealed record ApplicationPreferences(WindowMoveBehavior MoveBehavior = Wi
 public sealed class ApplicationSettingsStore
 {
     private readonly string path;
-    public ApplicationSettingsStore(string? path = null) => this.path = path ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AudioSwitcher", "settings.json");
+    public ApplicationSettingsStore(string? path = null) => this.path = Path.GetFullPath(path ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AudioSwitcher", "settings.json"));
     public ApplicationPreferences Load()
     {
         try
@@ -23,13 +23,29 @@ public sealed class ApplicationSettingsStore
     public void Save(ApplicationPreferences value)
     {
         if (!Enum.IsDefined(value.MoveBehavior)) throw new ArgumentOutOfRangeException(nameof(value));
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        WriteAtomically(value);
+    }
+
+    private void WriteAtomically(ApplicationPreferences value)
+    {
+        string directory = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(directory);
+        string temporary = Path.Combine(directory, ".settings-" + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
-            File.WriteAllText(temporary, JsonSerializer.Serialize(value));
-            File.Move(temporary, path, overwrite: true);
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                JsonSerializer.Serialize(stream, value);
+                stream.Flush(true);
+            }
+            if (File.Exists(path)) File.Replace(temporary, path, null);
+            else File.Move(temporary, path);
         }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        finally
+        {
+            try { if (File.Exists(temporary)) File.Delete(temporary); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
     }
 }

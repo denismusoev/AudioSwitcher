@@ -71,7 +71,7 @@ public partial class ProgramsView : UserControl
             lifetimeGeneration++;
             catalog = store.Load(); ShowCatalog(); UpdateLists();
             if (catalog.Error != null && Navigation.LaunchList) Notify("Каталог недоступен. Можно сохранить копию и сбросить", catalog.Error);
-            _ = RefreshAsync();
+            ObserveUiTask(RefreshAsync(), "Не удалось загрузить приложения");
         }
         if (focus) FocusFirstItem();
     }
@@ -89,15 +89,22 @@ public partial class ProgramsView : UserControl
             ApplyRunningSnapshot(snapshot, quiet);
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (active == lifetime) Notify("Не удалось загрузить приложения", ex.Message); }
+        catch (Exception ex)
+        {
+            global::AudioSwitcher.DiagnosticLog.Error("programs.refresh", ex);
+            if (active == lifetime) Notify("Не удалось загрузить приложения", ex.Message);
+        }
         finally { if (refreshingGeneration == generation) refreshingGeneration = -1; }
     }
-    public async Task SynchronizeGamesAsync(bool quiet = false)
+    public Task SynchronizeGamesAsync(bool quiet = false) => SynchronizeGamesAsync(quiet, CancellationToken.None);
+
+    internal async Task SynchronizeGamesAsync(bool quiet, CancellationToken cancellationToken)
     {
         Guid? selected = (LaunchList.SelectedItem as CatalogRow)?.Entry.Id;
         try
         {
-            var result = await Task.Run(gameSynchronizer.Synchronize);
+            var result = await Task.Run(() => gameSynchronizer.Synchronize(cancellationToken), cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             if (result == null) return;
             catalog = result;
             ShowCatalog(selected);
@@ -106,10 +113,29 @@ public partial class ProgramsView : UserControl
             if (!quiet && result.Error == null) Notify("Готово");
             else if (!quiet && result.Error != null) Notify("Каталог недоступен. Можно сохранить копию и сбросить", result.Error);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception error)
         {
-            if (!quiet) Notify("Не удалось обновить каталог игр", error.Message);
+            global::AudioSwitcher.DiagnosticLog.Error("games.synchronize", error);
+            if (!quiet && !cancellationToken.IsCancellationRequested) Notify("Не удалось обновить каталог игр", error.Message);
         }
+    }
+
+    private void ObserveUiTask(Task task, string message)
+    {
+        TaskObserver.Observe(task, error =>
+        {
+            var active = lifetime;
+            if (active == null || active.IsCancellationRequested || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+            try
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (active == lifetime && !active.IsCancellationRequested) Notify(message, error.Message);
+                });
+            }
+            catch (InvalidOperationException) when (active.IsCancellationRequested || Dispatcher.HasShutdownStarted) { }
+        });
     }
     private static bool CanStartRefresh(int generation, int refreshingGeneration) => generation != refreshingGeneration;
     private void ApplyRunningSnapshot(IReadOnlyList<RunningProgram> snapshot, bool quiet)
@@ -215,7 +241,7 @@ public partial class ProgramsView : UserControl
             catalog = store.Load(); ShowCatalog(); UpdateEmpty();
             Notify(catalog.Error == null ? "Готово" : "Каталог недоступен. Можно сохранить копию и сбросить", catalog.Error);
         }
-        else _ = RefreshAsync();
+        else ObserveUiTask(RefreshAsync(), "Не удалось загрузить приложения");
         if (Navigation.SectionActive) FocusFirstItem();
     }
     public void Move(int direction)
@@ -490,6 +516,8 @@ public partial class ProgramsView : UserControl
         catch (OperationCanceledException) { return false; }
         catch (Exception ex)
         {
+            global::AudioSwitcher.DiagnosticLog.Error("program.operation", ex,
+                new Dictionary<string, object?> { ["status"] = status });
             string message = ex.Message.ReplaceLineEndings(" ");
             Notify(message.Length <= 140 ? message : message[..137] + "…", ex.Message);
             PanelFeedback.SetResourceReference(TextBlock.ForegroundProperty, "ErrorText");

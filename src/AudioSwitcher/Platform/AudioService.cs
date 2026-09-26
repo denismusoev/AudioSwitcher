@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using AudioSwitcher;
 
 namespace AudioSwitcher.Platform;
 public sealed class AudioService
@@ -16,26 +17,45 @@ public sealed class AudioService
             if (enumerator.GetDefaultAudioEndpoint(0, 1, out defaultDevice) >= 0) { Check(defaultDevice.GetId(out defaultId)); }
             Check(enumerator.EnumAudioEndpoints(0, 1, out collection));
             Check(collection.GetCount(out uint count));
-            var result = new List<DeviceOption>();
-            for (uint i = 0; i < count; i++)
+            var result = CollectAvailable(count, ReadEndpoint,
+                (index, error) => DiagnosticLog.Error($"audio.enumerate_endpoint index={index}", error));
+            return result.OrderByDescending(d => d.IsDefault).ThenBy(d => d.Name).ToArray();
+
+            DeviceOption ReadEndpoint(uint index)
             {
                 Device? device = null; PropertyStore? store = null;
                 try
                 {
-                    Check(collection.Item(i, out device)); Check(device.GetId(out string id));
+                    Check(collection.Item(index, out device)); Check(device.GetId(out string id));
                     Check(device.OpenPropertyStore(0, out store));
                     var key = new PropertyKey { Format = new("A45C254E-DF1C-4EFD-8020-67D146A850E0"), Id = 14 };
-                    Check(store.GetValue(ref key, out var value));
-                    string name;
-                    try { name = value.Type == 31 ? Marshal.PtrToStringUni(value.Pointer) ?? id : id; }
+                    Variant value = default;
+                    try
+                    {
+                        Check(store.GetValue(ref key, out value));
+                        string name = value.Type == 31 ? Marshal.PtrToStringUni(value.Pointer) ?? id : id;
+                        return new(id, name, "Устройство вывода звука", id == defaultId);
+                    }
                     finally { PropVariantClear(ref value); }
-                    result.Add(new(id, name, "Устройство вывода звука", id == defaultId));
                 }
                 finally { Release(store); Release(device); }
             }
-            return result.OrderByDescending(d => d.IsDefault).ThenBy(d => d.Name).ToArray();
         }
         finally { Release(defaultDevice); Release(collection); Release(enumerator); }
+    }
+
+    internal static IReadOnlyList<T> CollectAvailable<T>(uint count, Func<uint, T> read, Action<uint, Exception> skipped)
+    {
+        var result = new List<T>();
+        for (uint index = 0; index < count; index++)
+        {
+            try { result.Add(read(index)); }
+            catch (Exception error) when (error is COMException or InvalidComObjectException)
+            {
+                skipped(index, error);
+            }
+        }
+        return result;
     }
     public void SetDefault(string id)
     {

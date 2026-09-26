@@ -15,6 +15,18 @@ try
     var exe = Path.Combine(root, "Моя игра.exe"); File.WriteAllText(exe, "fixture, never launched");
     var entry = new LaunchEntry(Guid.NewGuid(), "Моя игра 世界", LaunchKind.Executable, exe, "--name \"two words\" & text", root);
     var catalog = new LaunchCatalog(1, [entry]);
+    Check("Settings use an atomic replacement boundary", () =>
+    {
+        var settingsPath = Path.Combine(root, "settings", "settings.json");
+        var settings = new ApplicationSettingsStore(settingsPath);
+        var atomic = typeof(ApplicationSettingsStore).GetMethod("WriteAtomically", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        if (atomic == null) throw new TestFailure("Atomic settings writer is missing");
+        settings.Save(new(WindowMoveBehavior.ActivateAndClose));
+        Equal(WindowMoveBehavior.ActivateAndClose, settings.Load().MoveBehavior);
+        settings.Save(new(WindowMoveBehavior.KeepUtilityFocused));
+        Equal(WindowMoveBehavior.KeepUtilityFocused, settings.Load().MoveBehavior);
+        Equal(1, Directory.GetFiles(Path.GetDirectoryName(settingsPath)!).Length);
+    });
     Check("Missing catalog is empty without creating a file", () => { Equal(true, store.Load().CanSave); Equal(0, store.Load().Catalog.Entries.Count); Equal(false, File.Exists(path)); });
     Check("Unicode and arguments round trip and atomic replacement", () => { store.Save(catalog); Equal(entry, store.Load().Catalog.Entries.Single()); store.Save(catalog with { Entries = [] }); Equal(0, store.Load().Catalog.Entries.Count); Equal(1, Directory.GetFiles(Path.GetDirectoryName(path)!).Length); });
     foreach (var json in new[] { "{", "null", "{\"schemaVersion\":2,\"entries\":[]}", "{\"schemaVersion\":1,\"entries\":null}", "{\"schemaVersion\":1,\"entries\":[null]}", "{\"schemaVersion\":1,\"entries\":[{\"id\":\"" + entry.Id + "\",\"name\":\"X\",\"kind\":999,\"target\":\"x\"}]}", "{\"schemaVersion\":1,\"entries\":[{\"id\":\"" + entry.Id + "\",\"name\":null,\"kind\":\"Executable\",\"target\":\"x\"}]}" })
@@ -89,6 +101,14 @@ try
         Equal(validGame, games[0].SourceKey);
     });
     Check("Missing games root produces an empty scan", () => Equal(0, new GameManifestScanner(Path.Combine(root, "No Games")).Scan().Count));
+    Check("Cancelled game scan stops before filesystem work", () =>
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        try { _ = new GameManifestScanner(gamesRoot).Scan(cancellation.Token); }
+        catch (OperationCanceledException) { return; }
+        throw new TestFailure("Cancelled scan continued");
+    });
 
     Check("Synchronization creates updates and removes only manifest entries", () =>
     {
@@ -123,12 +143,22 @@ try
         var concurrentStore = new LaunchCatalogStore(Path.Combine(root, "concurrent", "programs.json"));
         var scanner = new BlockingScanner();
         var synchronizer = new GameCatalogSynchronizer(concurrentStore, scanner);
-        var first = Task.Run(synchronizer.Synchronize);
+        var first = Task.Run(() => synchronizer.Synchronize());
         if (!scanner.Entered.Wait(TimeSpan.FromSeconds(5))) throw new Exception("First scan did not start");
         Equal<LaunchCatalogLoad?>(null, synchronizer.Synchronize());
         scanner.Release.Set();
         if (first.GetAwaiter().GetResult() is null) throw new Exception("First synchronization was skipped");
         Equal(1, scanner.Calls);
+    });
+    Check("Cancellation releases the synchronization guard", () =>
+    {
+        var cancellationStore = new LaunchCatalogStore(Path.Combine(root, "cancel", "programs.json"));
+        var scanner = new CancelOnceScanner();
+        var synchronizer = new GameCatalogSynchronizer(cancellationStore, scanner);
+        try { _ = synchronizer.Synchronize(); }
+        catch (OperationCanceledException) { }
+        if (synchronizer.Synchronize() is null) throw new TestFailure("Synchronization guard remained locked after cancellation");
+        Equal(2, scanner.Calls);
     });
 }
 finally { Directory.Delete(root, true); }
@@ -140,11 +170,22 @@ sealed class BlockingScanner : IGameManifestScanner
     public ManualResetEventSlim Entered { get; } = new();
     public ManualResetEventSlim Release { get; } = new();
     public int Calls { get; private set; }
-    public IReadOnlyList<GameManifestEntry> Scan()
+    public IReadOnlyList<GameManifestEntry> Scan(CancellationToken cancellationToken = default)
     {
         Calls++;
         Entered.Set();
         if (!Release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+        return [];
+    }
+}
+sealed class CancelOnceScanner : IGameManifestScanner
+{
+    public int Calls { get; private set; }
+    public IReadOnlyList<GameManifestEntry> Scan(CancellationToken cancellationToken = default)
+    {
+        Calls++;
+        if (Calls == 1) throw new OperationCanceledException(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         return [];
     }
 }

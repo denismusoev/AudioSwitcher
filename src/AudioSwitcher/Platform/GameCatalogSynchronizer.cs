@@ -14,12 +14,14 @@ public sealed class GameCatalogSynchronizer
         this.scanner = scanner;
     }
 
-    public LaunchCatalogLoad? Synchronize()
+    public LaunchCatalogLoad? Synchronize(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (Interlocked.Exchange(ref synchronizing, 1) != 0) return null;
         try
         {
-            var games = scanner.Scan();
+            var games = scanner.Scan(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             return store.Update(current => Merge(current, games));
         }
         finally { Volatile.Write(ref synchronizing, 0); }

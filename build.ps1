@@ -4,6 +4,8 @@ dotnet run --project "$PSScriptRoot/tests/AudioSwitcher.Checks" --configuration 
 if ($LASTEXITCODE -ne 0) { throw 'Checks failed' }
 dotnet run --project "$PSScriptRoot/tests/AudioSwitcher.CatalogChecks" --configuration Release
 if ($LASTEXITCODE -ne 0) { throw 'Catalog checks failed' }
+dotnet run --project "$PSScriptRoot/tests/AudioSwitcher.ProgramChecks" --configuration Release
+if ($LASTEXITCODE -ne 0) { throw 'Program checks failed' }
 dotnet restore "$PSScriptRoot/src/AudioSwitcher/AudioSwitcher.csproj" --runtime $Runtime
 if ($LASTEXITCODE -ne 0) { throw 'Restore failed' }
 dotnet clean "$PSScriptRoot/src/AudioSwitcher/AudioSwitcher.csproj" --configuration Release --runtime $Runtime

@@ -4,6 +4,17 @@ using AudioSwitcher.Platform;
 int passed = 0, failed = 0;
 void Check(string name, Action test) { try { test(); Console.WriteLine($"PASS {name}"); passed++; } catch (Exception e) { Console.WriteLine($"FAIL {name}: {e.Message}"); failed++; } }
 void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"Expected {expected}, got {actual}"); }
+Check("Refresh failures use bounded backoff and success resets it", () => {
+    var backoff = new RefreshBackoff();
+    Equal(TimeSpan.FromSeconds(3), backoff.CurrentDelay);
+    foreach (int seconds in new[] { 6, 12, 24, 30, 30 })
+    {
+        backoff.RecordFailure();
+        Equal(TimeSpan.FromSeconds(seconds), backoff.CurrentDelay);
+    }
+    backoff.RecordSuccess();
+    Equal(TimeSpan.FromSeconds(3), backoff.CurrentDelay);
+});
 Check("New primary moves to origin and preserves spacing", () => {
     var result = DisplayLayout.Rebase([new("a", 0, 0), new("b", -1920, 240), new("c", 2560, -100)], "b");
     Equal(new DisplayPosition("b", 0, 0), result[1]);

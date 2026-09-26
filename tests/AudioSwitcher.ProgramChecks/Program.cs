@@ -6,6 +6,23 @@ using AudioSwitcher.Platform;
 int passed = 0, failed = 0, skipped = 0;
 async Task Check(string name, Func<Task> test) { try { await test(); Console.WriteLine($"PASS {name}"); passed++; } catch (Exception e) { Console.WriteLine($"FAIL {name}: {e}"); failed++; } }
 void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
+await Check("Close send validation rejects stale or exited process identity", () => {
+    var validate = typeof(ProgramProcessService).GetMethod("CanPostClose", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+        ?? throw new Exception("Close-time identity validation is missing");
+    var expected = new ProcessIdentity(42, 100);
+    bool Can(ProcessIdentity current, bool windowMatches, uint waitResult) =>
+        (bool)validate.Invoke(null, [expected, current, windowMatches, waitResult])!;
+    Require(Can(expected, true, 0x102), "Live matching target was rejected");
+    Require(!Can(expected with { Created = 101 }, true, 0x102), "Stale process identity was accepted");
+    Require(!Can(expected, false, 0x102), "Replaced HWND was accepted");
+    Require(!Can(expected, true, 0), "Exited process was accepted");
+    return Task.CompletedTask;
+});
+if (args.Contains("--reliability-only"))
+{
+    Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: 0");
+    return failed == 0 ? 0 : 1;
+}
 string configuration = AppContext.BaseDirectory.Contains("Release") ? "Release" : "Debug";
 string fixture = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, $"../../../../AudioSwitcher.ProgramFixture/bin/{configuration}/net10.0-windows/AudioSwitcher.ProgramFixture.exe"));
 var owned = new List<Process>();

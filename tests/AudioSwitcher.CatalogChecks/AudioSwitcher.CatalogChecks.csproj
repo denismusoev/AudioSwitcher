@@ -5,6 +5,7 @@
     <Compile Include="../../src/AudioSwitcher/Platform/LaunchCatalogStore.cs" Link="Platform/LaunchCatalogStore.cs" />
     <Compile Include="../../src/AudioSwitcher/Platform/GameManifestScanner.cs" Link="Platform/GameManifestScanner.cs" />
     <Compile Include="../../src/AudioSwitcher/Platform/GameCatalogSynchronizer.cs" Link="Platform/GameCatalogSynchronizer.cs" />
+    <Compile Include="../../src/AudioSwitcher/Platform/ApplicationSettingsStore.cs" Link="Platform/ApplicationSettingsStore.cs" />
     <Compile Include="../../src/AudioSwitcher/Platform/ProgramLaunchService.cs" Link="Platform/ProgramLaunchService.cs" />
   </ItemGroup>
 </Project>

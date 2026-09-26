@@ -24,8 +24,12 @@ public partial class MainWindow : Window
     private readonly AudioService audio = new();
     private readonly DisplayService display = new();
     private readonly InputGate gate = new();
+    private readonly RefreshBackoff controlRefreshBackoff = new();
     private readonly DispatcherTimer padTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     private readonly DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly CancellationToken lifetimeToken;
+    private readonly SemaphoreSlim deviceOperations = new(1, 1);
     private readonly ApplicationSettingsStore settingsStore;
     private readonly InterfaceSettings interfaceSettings;
     private NavigationState navigation => Programs.Navigation;
@@ -44,6 +48,7 @@ public partial class MainWindow : Window
 
     public MainWindow(ApplicationSettingsStore settingsStore)
     {
+        lifetimeToken = lifetime.Token;
         this.settingsStore = settingsStore;
         InitializeComponent();
         Devices.Style = (Style)FindResource("TvList");
@@ -57,26 +62,31 @@ public partial class MainWindow : Window
         interfaceSettings = new InterfaceSettings(Application.Current, UpdateAppearance);
         SizeChanged += (_, _) => UpdateAppearance();
         SourceInitialized += (_, _) => ApplyPreferredSize();
-        Loaded += (_, _) =>
-        {
-            navigation.Section = AppSection.Control;
-            _ = RefreshControlAsync();
-            UpdateChrome();
-            FocusSectionTab();
-            Activate();
-            padTimer.Start();
-            refreshTimer.Start();
-        };
+        Loaded += OnLoaded;
         Closed += (_, _) =>
         {
             closed = true;
+            lifetime.Cancel();
             padTimer.Stop();
             refreshTimer.Stop();
             Programs.Leave();
             interfaceSettings.Dispose();
+            lifetime.Dispose();
         };
         padTimer.Tick += (_, _) => PollPad();
         refreshTimer.Tick += async (_, _) => { if (!busy && overlay == OverlayMode.None) await RefreshCurrentAsync(); };
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        navigation.Section = AppSection.Control;
+        UpdateChrome();
+        FocusSectionTab();
+        Activate();
+        padTimer.Start();
+        refreshTimer.Start();
+        await RefreshControlAsync();
+        if (!closed) await SynchronizeGamesAsync(quiet: true);
     }
 
     private void UpdateAppearance()
@@ -106,9 +116,25 @@ public partial class MainWindow : Window
     {
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero) return;
-        var size = WindowPlacement.PreferredSizeInDips(WindowPlacement.WorkAreaForWindow(handle), PreferredWindowWidth, PreferredWindowHeight);
-        Width = size.Width;
-        Height = size.Height;
+        ApplyPreferredSize(() =>
+        {
+            var size = WindowPlacement.PreferredSizeInDips(WindowPlacement.WorkAreaForWindow(handle), PreferredWindowWidth, PreferredWindowHeight);
+            return (size.Width, size.Height);
+        });
+    }
+
+    private void ApplyPreferredSize(Func<(double Width, double Height)> getPreferredSize)
+    {
+        try
+        {
+            var size = getPreferredSize();
+            Width = size.Width;
+            Height = size.Height;
+        }
+        catch (Exception error)
+        {
+            DiagnosticLog.Error("Window.ApplyPreferredSize", error);
+        }
     }
 
     private void SetStatus(string text, string? details = null)
@@ -124,7 +150,17 @@ public partial class MainWindow : Window
         else if (navigation.Section == AppSection.Running) await Programs.RefreshAsync(quiet: true);
     }
 
-    public Task SynchronizeGamesAsync(bool quiet = false) => Programs.SynchronizeGamesAsync(quiet);
+    public Task SynchronizeGamesAsync(bool quiet = false) => closed
+        ? Task.CompletedTask
+        : Programs.SynchronizeGamesAsync(quiet, lifetimeToken);
+
+    private async Task<T> RunDeviceOperationAsync<T>(Func<T> operation)
+    {
+        var token = lifetimeToken;
+        await deviceOperations.WaitAsync(token);
+        try { return await Task.Run(operation, token); }
+        finally { deviceOperations.Release(); }
+    }
 
     private async Task RefreshControlAsync(bool quiet = false)
     {
@@ -132,8 +168,11 @@ public partial class MainWindow : Window
         controlRefreshing = true;
         try
         {
-            var snapshot = await Task.Run(() => (Audio: audio.GetDevices(), Displays: display.GetDevices()));
-            if (closed || navigation.Section != AppSection.Control) return;
+            var snapshot = await RunDeviceOperationAsync(() => (Audio: audio.GetDevices(), Displays: display.GetDevices()));
+            if (closed) return;
+            controlRefreshBackoff.RecordSuccess();
+            refreshTimer.Interval = controlRefreshBackoff.CurrentDelay;
+            if (navigation.Section != AppSection.Control) return;
             var audioItems = snapshot.Audio;
             var displayItems = snapshot.Displays;
             var activeAudio = audioItems.FirstOrDefault(x => x.IsDefault) ?? audioItems.FirstOrDefault();
@@ -144,7 +183,17 @@ public partial class MainWindow : Window
             AutomationProperties.SetName(DisplayControlCard, $"Основной экран: {DisplaySummary.Text}");
             if (!quiet) SetStatus("Готово");
         }
-        catch (Exception ex) { SetStatus("Не удалось обновить устройства", ex.Message); }
+        catch (OperationCanceledException) when (closed) { }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Error("control.refresh", ex);
+            if (!closed)
+            {
+                controlRefreshBackoff.RecordFailure();
+                refreshTimer.Interval = controlRefreshBackoff.CurrentDelay;
+                SetStatus("Не удалось обновить устройства", ex.Message);
+            }
+        }
         finally { controlRefreshing = false; }
     }
 
@@ -157,7 +206,7 @@ public partial class MainWindow : Window
         navigation.LaunchList = section == AppSection.Launch;
         SetPrimarySurfaceVisibility(true);
         gate.RequireRelease();
-        if (section == AppSection.Control) _ = RefreshControlAsync();
+        if (section == AppSection.Control) ObserveUiTask(RefreshControlAsync(), "Не удалось обновить устройства");
         else
         {
             Programs.SelectMode(section == AppSection.Launch, force: true);
@@ -172,7 +221,7 @@ public partial class MainWindow : Window
         Programs.Leave();
         SetPrimarySurfaceVisibility(true);
         gate.RequireRelease();
-        if (navigation.Section == AppSection.Control) _ = RefreshControlAsync();
+        if (navigation.Section == AppSection.Control) ObserveUiTask(RefreshControlAsync(), "Не удалось обновить устройства");
         else
         {
             Programs.SelectMode(navigation.Section == AppSection.Launch, force: true);
@@ -235,13 +284,19 @@ public partial class MainWindow : Window
         BackCommand.Content = overlay == OverlayMode.None && !sectionActive ? "закрыть" : "назад";
     }
 
-    private void OpenDevicePicker(bool displays)
+    private void OpenDevicePicker(bool displays) => ObserveUiTask(OpenDevicePickerAsync(displays), "Не удалось загрузить устройства");
+
+    private async Task OpenDevicePickerAsync(bool displays)
     {
-        if (busy || overlay != OverlayMode.None) return;
+        if (closed || busy || overlay != OverlayMode.None) return;
+        busy = true;
+        pickingDisplay = displays;
+        UpdateChrome();
+        SetStatus("Загрузка устройств…");
         try
         {
-            pickingDisplay = displays;
-            var items = displays ? display.GetDevices() : audio.GetDevices();
+            var items = await RunDeviceOperationAsync(() => displays ? display.GetDevices() : audio.GetDevices());
+            if (closed) return;
             Devices.ItemsSource = items;
             Devices.SelectedItem = items.FirstOrDefault(x => x.IsDefault) ?? items.FirstOrDefault();
             Empty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -250,7 +305,17 @@ public partial class MainWindow : Window
             ShowOverlay(OverlayMode.Devices);
             FocusSelection(Devices);
         }
-        catch (Exception ex) { ShowError("Не удалось загрузить устройства", ex.Message); }
+        catch (OperationCanceledException) when (closed) { }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Error("device_picker.load", ex, new Dictionary<string, object?> { ["kind"] = displays ? "display" : "audio" });
+            if (!closed) ShowError("Не удалось загрузить устройства", ex.Message);
+        }
+        finally
+        {
+            busy = false;
+            if (!closed) UpdateChrome();
+        }
     }
 
     private void OpenWindowPicker(WindowSelectionAction action, RunningProgram program)
@@ -384,16 +449,22 @@ public partial class MainWindow : Window
 
     private async Task ApplySelected()
     {
-        if (busy || Devices.SelectedItem is not DeviceOption selected) return;
+        if (closed || busy || Devices.SelectedItem is not DeviceOption selected) return;
         busy = true;
         UpdateChrome();
         SetStatus(pickingDisplay ? "Смена основного экрана…" : "Переключение звука…");
         await Dispatcher.Yield(DispatcherPriority.Background);
         try
         {
-            if (pickingDisplay) display.SetPrimaryDisplay(selected.Id); else audio.SetDefault(selected.Id);
+            await RunDeviceOperationAsync(() =>
+            {
+                if (pickingDisplay) display.SetPrimaryDisplay(selected.Id); else audio.SetDefault(selected.Id);
+                return true;
+            });
+            if (closed) return;
             CloseDetails();
             await RefreshControlAsync(quiet: true);
+            if (closed) return;
             if (pickingDisplay)
             {
                 await Dispatcher.Yield(DispatcherPriority.ContextIdle);
@@ -406,8 +477,33 @@ public partial class MainWindow : Window
             }
             SetStatus($"Готово: {selected.DisplayName}");
         }
-        catch (Exception ex) { ShowError("Не удалось переключить", ex.Message); }
-        finally { busy = false; UpdateChrome(); }
+        catch (OperationCanceledException) when (closed) { }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Error("device.apply", ex, new Dictionary<string, object?>
+            {
+                ["deviceId"] = selected.Id,
+                ["kind"] = pickingDisplay ? "display" : "audio"
+            });
+            if (!closed) ShowError("Не удалось переключить", ex.Message);
+        }
+        finally { busy = false; if (!closed) UpdateChrome(); }
+    }
+
+    private void ObserveUiTask(Task task, string message)
+    {
+        TaskObserver.Observe(task, error =>
+        {
+            if (closed || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+            try
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (!closed) ShowError(message, error.Message);
+                });
+            }
+            catch (InvalidOperationException) when (closed || Dispatcher.HasShutdownStarted) { }
+        });
     }
 
     private void ApplySetting()
@@ -469,9 +565,9 @@ public partial class MainWindow : Window
             else if (overlay == OverlayMode.DeleteConfirmation && action == PadAction.Down) MoveOverlaySelection(DeleteConfirmationChoices, 1);
             else if (action == PadAction.Confirm)
             {
-                if (overlay == OverlayMode.Devices) _ = ApplySelected();
-                else if (overlay == OverlayMode.WindowSelection) _ = ApplyWindowSelection();
-                else if (overlay == OverlayMode.DeleteConfirmation) _ = ApplyDeleteConfirmation();
+                if (overlay == OverlayMode.Devices) ObserveUiTask(ApplySelected(), "Не удалось переключить");
+                else if (overlay == OverlayMode.WindowSelection) ObserveUiTask(ApplyWindowSelection(), "Не удалось выполнить действие");
+                else if (overlay == OverlayMode.DeleteConfirmation) ObserveUiTask(ApplyDeleteConfirmation(), "Не удалось удалить запись");
                 else ToggleSetting();
             }
             return;
@@ -498,17 +594,17 @@ public partial class MainWindow : Window
             case PadAction.Confirm:
                 if (!navigation.SectionActive) { ActivateSection(PadAction.Confirm); break; }
                 if (navigation.Section == AppSection.Control) OpenDevicePicker(Keyboard.FocusedElement == DisplayControlCard);
-                else _ = Programs.ConfirmAsync();
+                else ObserveUiTask(Programs.ConfirmAsync(), "Не удалось выполнить действие");
                 break;
             case PadAction.Secondary:
                 if (!navigation.SectionActive) break;
                 if (Programs.Editing) Programs.DeleteEditing();
-                else if (navigation.Section != AppSection.Control) _ = Programs.SecondaryAsync();
+                else if (navigation.Section != AppSection.Control) ObserveUiTask(Programs.SecondaryAsync(), "Не удалось выполнить действие");
                 break;
             case PadAction.CreateOrEdit:
                 if (!navigation.SectionActive) break;
-                if (Programs.Editing) _ = Programs.CatalogAsync();
-                else if (navigation.Section == AppSection.Launch) _ = Programs.CreateAsync();
+                if (Programs.Editing) ObserveUiTask(Programs.CatalogAsync(), "Не удалось сохранить запись");
+                else if (navigation.Section == AppSection.Launch) ObserveUiTask(Programs.CreateAsync(), "Не удалось создать запись");
                 else OpenDetails();
                 break;
             case PadAction.Details: if (navigation.SectionActive) OpenDetails(Programs.InPanel ? Programs.DetailsText : null); break;
@@ -565,7 +661,7 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.F5 && overlay == OverlayMode.None && !Programs.Editing)
         {
-            _ = Programs.SynchronizeGamesAsync();
+            ObserveUiTask(SynchronizeGamesAsync(), "Не удалось обновить каталог игр");
             e.Handled = true;
             return;
         }
