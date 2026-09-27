@@ -51,7 +51,11 @@ public sealed class GamepadInputService : IAsyncDisposable
 
     public void SetDeliveryEnabled(bool enabled)
     {
-        deliveryEnabled = enabled;
+        Volatile.Write(ref deliveryEnabled, enabled);
+        if (!enabled)
+        {
+            lock (queueLock) queue.Clear();
+        }
         lock (engineLock) engine.SetDeliveryEnabled(enabled, Milliseconds());
     }
 
@@ -68,7 +72,7 @@ public sealed class GamepadInputService : IAsyncDisposable
 
                 IReadOnlyList<GamepadCommand> commands;
                 lock (engineLock)
-                    commands = engine.Update(new ArraySegment<GamepadSnapshot>(snapshots, 0, count), Milliseconds(), deliveryEnabled);
+                    commands = engine.Update(new ArraySegment<GamepadSnapshot>(snapshots, 0, count), Milliseconds(), Volatile.Read(ref deliveryEnabled));
                 foreach (var command in commands) Enqueue(command);
                 await Task.Delay(pollInterval, token).ConfigureAwait(false);
             }
@@ -120,10 +124,16 @@ public sealed class GamepadInputService : IAsyncDisposable
                 queue.RemoveAt(0);
             }
 
+            if (!Volatile.Read(ref deliveryEnabled)) continue;
             GamepadCommandResult result;
             try { result = handler(command); }
             catch { result = GamepadCommandResult.Unhandled; }
             lock (engineLock) engine.Report(command, result);
+            if (result is GamepadCommandResult.ContextChanged or GamepadCommandResult.Blocked)
+            {
+                lock (queueLock)
+                    queue.RemoveAll(item => item.IsRepeat && item.ControllerId == command.ControllerId && item.Control == command.Control);
+            }
         }
     }
 

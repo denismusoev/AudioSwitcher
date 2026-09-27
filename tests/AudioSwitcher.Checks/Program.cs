@@ -216,6 +216,57 @@ Check("Diagnostics retain the newest 256 relevant events", () => {
     var diagnostics = engine.GetDiagnostics();
     Equal(256, diagnostics.Count); Equal(300L, diagnostics[^1].Timestamp);
 });
+Check("Extreme negative stick diagonals do not stop input", () => {
+    var engine = new GamepadInputEngine();
+    var neutral = new GamepadSnapshot(0, true, 0, GamepadButtons.None, 0, 0);
+    engine.Update([neutral], 0, true);
+    var command = engine.Update([neutral with { Packet = 1, LeftX = short.MinValue, LeftY = short.MinValue }], 10, true).Single();
+    Equal(PadAction.Down, command.Action);
+});
+Check("Held D-pad diagonal keeps one selected direction", () => {
+    var engine = new GamepadInputEngine();
+    var neutral = new GamepadSnapshot(0, true, 0, GamepadButtons.None, 0, 0);
+    engine.Update([neutral], 0, true);
+    Equal(PadAction.Up, engine.Update([neutral with { Packet = 1, Buttons = GamepadButtons.DPadUp }], 10, true).Single().Action);
+    var diagonal = neutral with { Packet = 2, Buttons = GamepadButtons.DPadUp | GamepadButtons.DPadRight };
+    Equal(PadAction.Right, engine.Update([diagonal], 20, true).Single().Action);
+    Equal(0, engine.Update([diagonal with { Packet = 3 }], 30, true).Count);
+    Equal(PadAction.Right, engine.Update([diagonal with { Packet = 4 }], 420, true).Single().Action);
+});
+Check("Blocked command stays suppressed until physical release", () => {
+    var engine = new GamepadInputEngine();
+    var neutral = new GamepadSnapshot(0, true, 0, GamepadButtons.None, 0, 0);
+    engine.Update([neutral], 0, true);
+    var down = neutral with { Packet = 1, Buttons = GamepadButtons.DPadDown };
+    var blocked = engine.Update([down], 10, true).Single();
+    engine.Report(blocked, GamepadCommandResult.Blocked);
+    Equal(0, engine.Update([down with { Packet = 2 }], 500, true).Count);
+    engine.Update([neutral with { Packet = 3 }], 510, true);
+    Equal(PadAction.Down, engine.Update([down with { Packet = 4 }], 520, true).Single().Action);
+});
+Check("Suppressed physical direction survives a dominance change", () => {
+    var engine = new GamepadInputEngine();
+    var neutral = new GamepadSnapshot(0, true, 0, GamepadButtons.None, 0, 0);
+    engine.Update([neutral], 0, true);
+    var rightState = neutral with { Packet = 1, LeftX = 20000 };
+    var right = engine.Update([rightState], 10, true).Single();
+    engine.Report(right, GamepadCommandResult.ContextChanged);
+    var down = engine.Update([rightState with { Packet = 2, LeftY = short.MinValue }], 20, true);
+    Equal(1, down.Count); Equal(PadAction.Down, down[0].Action);
+    Equal(0, engine.Update([rightState with { Packet = 3 }], 30, true).Count);
+});
+Check("Rejected secondary repeat cannot acquire ownership", () => {
+    var engine = new GamepadInputEngine();
+    var zero = new GamepadSnapshot(0, true, 0, GamepadButtons.None, 0, 0);
+    var one = new GamepadSnapshot(1, true, 0, GamepadButtons.None, 0, 0);
+    engine.Update([zero, one], 0, true);
+    engine.Update([zero with { Packet = 1, Buttons = GamepadButtons.A }, one], 10, true);
+    engine.Update([zero with { Packet = 2 }, one with { Packet = 1, Buttons = GamepadButtons.DPadDown }], 20, true);
+    engine.Update([zero with { Packet = 3, Buttons = GamepadButtons.None }, one with { Packet = 2, Buttons = GamepadButtons.DPadDown }], 30, true);
+    Equal(0, engine.Update([zero with { Packet = 4, Buttons = GamepadButtons.None }, one with { Packet = 3, Buttons = GamepadButtons.DPadDown }], 2200, true).Count);
+    engine.Update([zero with { Packet = 5, Buttons = GamepadButtons.None }, one with { Packet = 4, Buttons = GamepadButtons.None }], 2210, true);
+    Equal(PadAction.Down, engine.Update([zero with { Packet = 6, Buttons = GamepadButtons.None }, one with { Packet = 5, Buttons = GamepadButtons.DPadDown }], 2220, true).Single().Action);
+});
 await CheckAsync("Polling schedules one drain", async () => {
     var source = new SequenceGamepadSource(index => index switch
     {
@@ -280,6 +331,37 @@ await CheckAsync("Missing XInput stops controller polling", async () => {
     service.Start(CancellationToken.None);
     await Task.Delay(30);
     Equal(1, source.Reads);
+});
+await CheckAsync("Queued command is discarded on deactivation", async () => {
+    var source = new SequenceGamepadSource(index => index switch
+    {
+        0 => new(0, true, 1, GamepadButtons.None, 0, 0),
+        1 => new(0, true, 2, GamepadButtons.A, 0, 0),
+        _ => new(0, true, (uint)(index + 1), GamepadButtons.None, 0, 0)
+    });
+    var scheduled = new List<Action>();
+    var handled = new List<GamepadCommand>();
+    await using var service = new GamepadInputService(source, new(), action => { lock (scheduled) scheduled.Add(action); }, command => { handled.Add(command); return GamepadCommandResult.Handled; }, new AdvancingTimeProvider(10), TimeSpan.FromMilliseconds(1));
+    service.Start(CancellationToken.None);
+    if (!SpinWait.SpinUntil(() => { lock (scheduled) return scheduled.Count == 1; }, 500)) throw new Exception("No drain was scheduled");
+    service.SetDeliveryEnabled(false);
+    scheduled.Single()();
+    Equal(0, handled.Count);
+});
+await CheckAsync("Context change discards already queued repeats", async () => {
+    var source = new SequenceGamepadSource(index => index switch
+    {
+        0 => new(0, true, 1, GamepadButtons.None, 0, 0),
+        _ => new(0, true, (uint)(index + 1), GamepadButtons.DPadRight, 0, 0)
+    });
+    var scheduled = new List<Action>();
+    var handled = new List<GamepadCommand>();
+    await using var service = new GamepadInputService(source, new(), action => { lock (scheduled) scheduled.Add(action); }, command => { handled.Add(command); return handled.Count == 1 ? GamepadCommandResult.ContextChanged : GamepadCommandResult.Handled; }, new AdvancingTimeProvider(500), TimeSpan.FromMilliseconds(1));
+    service.Start(CancellationToken.None);
+    if (!SpinWait.SpinUntil(() => source.Reads >= 5, 500)) throw new Exception("Repeats were not queued");
+    await service.DisposeAsync();
+    scheduled.Single()();
+    Equal(1, handled.Count); Equal(false, handled[0].IsRepeat);
 });
 Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: 0");
 return failed == 0 ? 0 : 1;
