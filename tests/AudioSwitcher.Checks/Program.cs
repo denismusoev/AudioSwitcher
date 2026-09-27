@@ -144,6 +144,7 @@ Check("TV shortcut actions do not repeat while held", () => {
 Check("Button edges fire once", () => {
     var engine = new GamepadInputEngine();
     var pressed = new GamepadSnapshot(0, true, 1, GamepadButtons.A, 0, 0);
+    engine.Update([pressed with { Packet = 0, Buttons = GamepadButtons.None }], -1, true);
     var first = engine.Update([pressed], 0, true);
     Equal(1, first.Count); Equal(PadAction.Confirm, first[0].Action); Equal(GamepadControl.Confirm, first[0].Control);
     Equal(0, engine.Update([pressed with { Packet = 2 }], 500, true).Count);
@@ -153,6 +154,7 @@ Check("Button edges fire once", () => {
 Check("Directions repeat at 400 and 140 milliseconds", () => {
     var engine = new GamepadInputEngine();
     var down = new GamepadSnapshot(0, true, 1, GamepadButtons.DPadDown, 0, 0);
+    engine.Update([down with { Packet = 0, Buttons = GamepadButtons.None }], -1, true);
     var initial = engine.Update([down], 0, true);
     Equal(1, initial.Count); Equal(false, initial[0].IsRepeat); Equal(PadAction.Down, initial[0].Action);
     Equal(0, engine.Update([down with { Packet = 2 }], 399, true).Count);
@@ -164,6 +166,7 @@ Check("Directions repeat at 400 and 140 milliseconds", () => {
 Check("A changed direction does not require global neutral", () => {
     var engine = new GamepadInputEngine();
     var right = new GamepadSnapshot(0, true, 1, GamepadButtons.DPadRight, 0, 0);
+    engine.Update([right with { Packet = 0, Buttons = GamepadButtons.None }], -1, true);
     Equal(PadAction.Right, engine.Update([right], 0, true).Single().Action);
     var changed = engine.Update([right with { Packet = 2, Buttons = GamepadButtons.DPadDown }], 10, true);
     Equal(1, changed.Count); Equal(PadAction.Down, changed[0].Action);
@@ -180,6 +183,7 @@ Check("Stick hysteresis rejects boundary noise", () => {
 Check("Context suppression affects only its source", () => {
     var engine = new GamepadInputEngine();
     var confirmState = new GamepadSnapshot(0, true, 1, GamepadButtons.A, 0, 0);
+    engine.Update([confirmState with { Packet = 0, Buttons = GamepadButtons.None }], -1, true);
     var confirm = engine.Update([confirmState], 0, true).Single();
     engine.Report(confirm, GamepadCommandResult.ContextChanged);
     var close = engine.Update([confirmState with { Packet = 2, Buttons = GamepadButtons.A | GamepadButtons.B }], 10, true);
@@ -189,8 +193,66 @@ Check("Context suppression affects only its source", () => {
 Check("Simultaneous controls retain action priority", () => {
     var engine = new GamepadInputEngine();
     var all = GamepadButtons.A | GamepadButtons.B | GamepadButtons.X | GamepadButtons.Y | GamepadButtons.Menu | GamepadButtons.View | GamepadButtons.DPadDown;
+    engine.Update([new GamepadSnapshot(0, true, 0, GamepadButtons.None, 0, 0)], -1, true);
     var command = engine.Update([new GamepadSnapshot(0, true, 1, all, 0, 0)], 0, true).Single();
     Equal(PadAction.Close, command.Action); Equal(GamepadControl.Close, command.Control);
+});
+Check("Only a neutral-baselined controller can acquire ownership", () => {
+    var engine = new GamepadInputEngine();
+    var held = new GamepadSnapshot(0, true, 1, GamepadButtons.A, 0, 0);
+    Equal(0, engine.Update([held], 0, true).Count);
+    Equal(0, engine.Update([held with { Packet = 2, Buttons = GamepadButtons.None }], 10, true).Count);
+    Equal(PadAction.Confirm, engine.Update([held with { Packet = 3 }], 20, true).Single().Action);
+});
+Check("Owner disconnect releases ownership", () => {
+    var engine = new GamepadInputEngine();
+    var neutral0 = new GamepadSnapshot(0, true, 1, GamepadButtons.None, 0, 0);
+    var neutral1 = new GamepadSnapshot(1, true, 1, GamepadButtons.None, 0, 0);
+    engine.Update([neutral0, neutral1], 0, true);
+    Equal(PadAction.Confirm, engine.Update([neutral0 with { Packet = 2, Buttons = GamepadButtons.A }, neutral1], 10, true).Single().Action);
+    var next = engine.Update([neutral0 with { Connected = false, Packet = 3 }, neutral1 with { Packet = 2, Buttons = GamepadButtons.B }], 20, true);
+    Equal(1, next.Count); Equal(1, next[0].ControllerId); Equal(PadAction.Close, next[0].Action);
+});
+Check("Secondary drift cannot mask the active controller", () => {
+    var engine = new GamepadInputEngine();
+    var zero = new GamepadSnapshot(0, true, 1, GamepadButtons.None, 0, 0);
+    var one = new GamepadSnapshot(1, true, 1, GamepadButtons.None, 0, 0);
+    engine.Update([zero, one], 0, true);
+    Equal(PadAction.Confirm, engine.Update([zero with { Packet = 2, Buttons = GamepadButtons.A }, one], 10, true).Single().Action);
+    Equal(0, engine.Update([zero with { Packet = 3, Buttons = GamepadButtons.A }, one with { Packet = 2, LeftY = -20000 }], 20, true).Count);
+});
+Check("Activation suppresses only controls already held", () => {
+    var engine = new GamepadInputEngine();
+    var state = new GamepadSnapshot(0, true, 1, GamepadButtons.None, 0, 0);
+    engine.Update([state], 0, true);
+    engine.SetDeliveryEnabled(false, 10);
+    engine.Update([state with { Packet = 2, Buttons = GamepadButtons.A }], 20, false);
+    engine.SetDeliveryEnabled(true, 30);
+    var next = engine.Update([state with { Packet = 3, Buttons = GamepadButtons.A | GamepadButtons.B }], 40, true);
+    Equal(1, next.Count); Equal(PadAction.Close, next[0].Action);
+});
+Check("Busy-held direction does not fire after resume", () => {
+    var engine = new GamepadInputEngine();
+    var state = new GamepadSnapshot(0, true, 1, GamepadButtons.None, 0, 0);
+    engine.Update([state], 0, true);
+    engine.SetDeliveryEnabled(false, 10);
+    engine.Update([state with { Packet = 2, Buttons = GamepadButtons.DPadDown }], 20, false);
+    engine.SetDeliveryEnabled(true, 1000);
+    Equal(0, engine.Update([state with { Packet = 3, Buttons = GamepadButtons.DPadDown }], 1010, true).Count);
+    engine.Update([state with { Packet = 4 }], 1020, true);
+    Equal(PadAction.Down, engine.Update([state with { Packet = 5, Buttons = GamepadButtons.DPadDown }], 1030, true).Single().Action);
+});
+Check("Diagnostics retain the newest 256 relevant events", () => {
+    var engine = new GamepadInputEngine();
+    var state = new GamepadSnapshot(0, true, 0, GamepadButtons.None, 0, 0);
+    engine.Update([state], 0, true);
+    for (int i = 1; i <= 300; i++)
+    {
+        var buttons = i % 2 == 0 ? GamepadButtons.None : GamepadButtons.A;
+        engine.Update([state with { Packet = (uint)i, Buttons = buttons }], i, true);
+    }
+    var diagnostics = engine.GetDiagnostics();
+    Equal(256, diagnostics.Count); Equal(300L, diagnostics[^1].Timestamp);
 });
 Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: 0");
 return failed == 0 ? 0 : 1;

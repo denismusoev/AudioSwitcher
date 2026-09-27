@@ -58,3 +58,25 @@ public readonly record struct GamepadCommand(
     bool IsRepeat);
 
 public enum GamepadCommandResult { Handled, ContextChanged, Blocked, Unhandled }
+
+public enum GamepadDiagnosticResult
+{
+    Connected,
+    NeutralBaseline,
+    Generated,
+    Suppressed,
+    DeliveryDisabled,
+    Disconnected,
+    Handled,
+    ContextChanged,
+    Blocked,
+    Unhandled
+}
+
+public readonly record struct GamepadDiagnosticEvent(
+    long Timestamp,
+    int ControllerId,
+    GamepadControl Control,
+    PadAction Action,
+    bool IsRepeat,
+    GamepadDiagnosticResult Result);

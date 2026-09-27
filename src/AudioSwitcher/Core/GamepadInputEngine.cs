@@ -6,51 +6,175 @@ public sealed class GamepadInputEngine
     private const int StickRelease = 10000;
     private const long InitialRepeatDelay = 400;
     private const long RepeatInterval = 140;
+    private const long OwnershipWindow = 2000;
+    private const int DiagnosticCapacity = 256;
 
     private readonly Dictionary<int, ControllerState> controllers = [];
     private readonly HashSet<(int Controller, GamepadControl Control)> suppressed = [];
+    private readonly Queue<GamepadDiagnosticEvent> diagnostics = new(DiagnosticCapacity);
+    private int? activeController;
+    private long ownerUntil;
+    private bool engineDeliveryEnabled = true;
 
     public IReadOnlyList<GamepadCommand> Update(IReadOnlyList<GamepadSnapshot> snapshots, long timestamp, bool deliveryEnabled)
     {
-        List<GamepadCommand>? commands = null;
+        var candidates = new List<GamepadCommand>(snapshots.Count);
         foreach (var snapshot in snapshots)
+            UpdateController(snapshot, timestamp, candidates);
+
+        bool enabled = engineDeliveryEnabled && deliveryEnabled;
+        if (!enabled)
         {
-            if (!snapshot.Connected)
+            foreach (var command in candidates)
+                Record(command, GamepadDiagnosticResult.DeliveryDisabled);
+            return [];
+        }
+
+        List<GamepadCommand>? commands = null;
+        foreach (var candidate in candidates)
+        {
+            if (!CanDeliverFrom(candidate.ControllerId, timestamp)) continue;
+            if (activeController != candidate.ControllerId)
+                activeController = candidate.ControllerId;
+            if (!candidate.IsRepeat) ownerUntil = timestamp + OwnershipWindow;
+            if (IsSuppressed(candidate))
             {
-                controllers.Remove(snapshot.ControllerId);
-                suppressed.RemoveWhere(item => item.Controller == snapshot.ControllerId);
+                Record(candidate, GamepadDiagnosticResult.Suppressed);
                 continue;
             }
-
-            if (!controllers.TryGetValue(snapshot.ControllerId, out var state))
-                controllers[snapshot.ControllerId] = state = new ControllerState();
-
-            var buttons = snapshot.Buttons;
-            var pressed = buttons & ~state.Buttons;
-            UpdateStickState(state, snapshot.LeftX, snapshot.LeftY);
-            var direction = SelectDirection(state, buttons);
-            ClearReleasedSuppressions(snapshot.ControllerId, buttons, direction);
-
-            var buttonCommand = SelectButtonCommand(snapshot.ControllerId, pressed, timestamp);
-            GamepadCommand? directionCommand = UpdateDirection(snapshot.ControllerId, state, direction, timestamp);
-            state.Buttons = buttons;
-
-            if (!deliveryEnabled) continue;
-            GamepadCommand? selected = buttonCommand ?? ((buttons & MappedButtons) != 0 ? null : directionCommand);
-            if (selected is not GamepadCommand command || IsSuppressed(command)) continue;
-            (commands ??= []).Add(command);
+            (commands ??= []).Add(candidate);
+            Record(candidate, GamepadDiagnosticResult.Generated);
         }
         return commands ?? [];
+    }
+
+    public void SetDeliveryEnabled(bool enabled, long timestamp)
+    {
+        if (engineDeliveryEnabled == enabled) return;
+        engineDeliveryEnabled = enabled;
+        if (!enabled) return;
+
+        foreach (var pair in controllers)
+        {
+            foreach (var control in ActiveButtonControls(pair.Value.Buttons))
+                suppressed.Add((pair.Key, control));
+            if (pair.Value.Direction != GamepadControl.None)
+                suppressed.Add((pair.Key, pair.Value.Direction));
+        }
     }
 
     public void Report(GamepadCommand command, GamepadCommandResult result)
     {
         if (result == GamepadCommandResult.ContextChanged)
             suppressed.Add((command.ControllerId, command.Control));
+        Record(command, result switch
+        {
+            GamepadCommandResult.Handled => GamepadDiagnosticResult.Handled,
+            GamepadCommandResult.ContextChanged => GamepadDiagnosticResult.ContextChanged,
+            GamepadCommandResult.Blocked => GamepadDiagnosticResult.Blocked,
+            _ => GamepadDiagnosticResult.Unhandled
+        });
     }
 
-    private static readonly GamepadButtons MappedButtons = GamepadButtons.A | GamepadButtons.B | GamepadButtons.X |
-        GamepadButtons.Y | GamepadButtons.Menu | GamepadButtons.View;
+    public IReadOnlyList<GamepadDiagnosticEvent> GetDiagnostics() => diagnostics.ToArray();
+
+    private void UpdateController(GamepadSnapshot snapshot, long timestamp, List<GamepadCommand> candidates)
+    {
+        if (!snapshot.Connected)
+        {
+            if (controllers.Remove(snapshot.ControllerId))
+                AddDiagnostic(new(timestamp, snapshot.ControllerId, GamepadControl.None, PadAction.None, false, GamepadDiagnosticResult.Disconnected));
+            suppressed.RemoveWhere(item => item.Controller == snapshot.ControllerId);
+            if (activeController == snapshot.ControllerId) activeController = null;
+            return;
+        }
+
+        bool created;
+        if (!controllers.TryGetValue(snapshot.ControllerId, out var state))
+        {
+            created = true;
+            controllers[snapshot.ControllerId] = state = new ControllerState();
+        }
+        else created = false;
+
+        var previousButtons = state.Buttons;
+        var previousDirection = state.Direction;
+        UpdateStickState(state, snapshot.LeftX, snapshot.LeftY);
+        var direction = SelectDirection(state, snapshot.Buttons);
+        var pressed = snapshot.Buttons & ~previousButtons;
+        state.Buttons = snapshot.Buttons;
+        UpdateDirectionState(snapshot.ControllerId, state, direction, timestamp, candidates);
+        ClearReleasedSuppressions(snapshot.ControllerId, snapshot.Buttons, direction);
+
+        bool neutral = IsNeutral(snapshot.Buttons, direction);
+        if (created)
+        {
+            state.Baselined = neutral;
+            state.Direction = direction;
+            candidates.RemoveAll(command => command.ControllerId == snapshot.ControllerId);
+            if (neutral) AddDiagnostic(new(timestamp, snapshot.ControllerId, GamepadControl.None, PadAction.None, false, GamepadDiagnosticResult.NeutralBaseline));
+            return;
+        }
+        if (!state.Baselined)
+        {
+            if (neutral)
+            {
+                state.Baselined = true;
+                AddDiagnostic(new(timestamp, snapshot.ControllerId, GamepadControl.None, PadAction.None, false, GamepadDiagnosticResult.NeutralBaseline));
+            }
+            candidates.RemoveAll(command => command.ControllerId == snapshot.ControllerId);
+            return;
+        }
+
+        var buttonCommand = SelectButtonCommand(snapshot.ControllerId, pressed, timestamp);
+        if (buttonCommand is GamepadCommand button)
+        {
+            candidates.RemoveAll(command => command.ControllerId == snapshot.ControllerId && IsDirection(command.Control));
+            candidates.Add(button);
+        }
+        else if ((snapshot.Buttons & MappedButtons) != 0)
+            candidates.RemoveAll(command => command.ControllerId == snapshot.ControllerId && IsDirection(command.Control));
+
+        if (previousButtons != snapshot.Buttons || previousDirection != direction)
+            AddDiagnostic(new(timestamp, snapshot.ControllerId, direction, DirectionAction(direction), false, enabledResult()));
+
+        GamepadDiagnosticResult enabledResult() => engineDeliveryEnabled ? GamepadDiagnosticResult.Connected : GamepadDiagnosticResult.DeliveryDisabled;
+    }
+
+    private bool CanDeliverFrom(int controller, long timestamp)
+    {
+        if (activeController is null || activeController == controller) return true;
+        if (!controllers.TryGetValue(activeController.Value, out var owner))
+        {
+            activeController = null;
+            return true;
+        }
+        if (!IsNeutral(owner.Buttons, owner.Direction) || timestamp < ownerUntil) return false;
+        activeController = null;
+        return true;
+    }
+
+    private static bool IsNeutral(GamepadButtons buttons, GamepadControl direction) =>
+        (buttons & (MappedButtons | DPadButtons)) == 0 && direction == GamepadControl.None;
+
+    private void UpdateDirectionState(int controller, ControllerState state, GamepadControl direction, long timestamp, List<GamepadCommand> candidates)
+    {
+        if (direction == GamepadControl.None)
+        {
+            state.Direction = GamepadControl.None;
+            return;
+        }
+        if (direction != state.Direction)
+        {
+            state.Direction = direction;
+            state.NextRepeat = timestamp + InitialRepeatDelay;
+            candidates.Add(Command(controller, direction, timestamp, false));
+            return;
+        }
+        if (timestamp < state.NextRepeat) return;
+        state.NextRepeat = timestamp + RepeatInterval;
+        candidates.Add(Command(controller, direction, timestamp, true));
+    }
 
     private bool IsSuppressed(GamepadCommand command) => suppressed.Contains((command.ControllerId, command.Control));
 
@@ -70,6 +194,12 @@ public sealed class GamepadInputEngine
         _ => control == direction
     };
 
+    private static IEnumerable<GamepadControl> ActiveButtonControls(GamepadButtons buttons)
+    {
+        foreach (var entry in ButtonPriority)
+            if ((buttons & entry.Button) != 0) yield return entry.Control;
+    }
+
     private static GamepadCommand? SelectButtonCommand(int controller, GamepadButtons pressed, long timestamp)
     {
         foreach (var entry in ButtonPriority)
@@ -78,6 +208,10 @@ public sealed class GamepadInputEngine
         return null;
     }
 
+    private static readonly GamepadButtons MappedButtons = GamepadButtons.A | GamepadButtons.B | GamepadButtons.X |
+        GamepadButtons.Y | GamepadButtons.Menu | GamepadButtons.View;
+    private static readonly GamepadButtons DPadButtons = GamepadButtons.DPadUp | GamepadButtons.DPadDown |
+        GamepadButtons.DPadLeft | GamepadButtons.DPadRight;
     private static readonly (GamepadButtons Button, GamepadControl Control, PadAction Action)[] ButtonPriority =
     [
         (GamepadButtons.B, GamepadControl.Close, PadAction.Close),
@@ -88,39 +222,24 @@ public sealed class GamepadInputEngine
         (GamepadButtons.View, GamepadControl.Details, PadAction.Details)
     ];
 
-    private static GamepadCommand? UpdateDirection(int controller, ControllerState state, GamepadControl direction, long timestamp)
-    {
-        if (direction == GamepadControl.None)
-        {
-            state.Direction = GamepadControl.None;
-            return null;
-        }
-        if (direction != state.Direction)
-        {
-            state.Direction = direction;
-            state.NextRepeat = timestamp + InitialRepeatDelay;
-            return Command(controller, direction, timestamp, false);
-        }
-        if (timestamp < state.NextRepeat) return null;
-        state.NextRepeat = timestamp + RepeatInterval;
-        return Command(controller, direction, timestamp, true);
-    }
+    private static bool IsDirection(GamepadControl control) => control is >= GamepadControl.DPadUp and <= GamepadControl.LeftStickRight;
 
     private static GamepadCommand Command(int controller, GamepadControl control, long timestamp, bool repeat) =>
-        new(controller, control, control switch
-        {
-            GamepadControl.DPadUp or GamepadControl.LeftStickUp => PadAction.Up,
-            GamepadControl.DPadDown or GamepadControl.LeftStickDown => PadAction.Down,
-            GamepadControl.DPadLeft or GamepadControl.LeftStickLeft => PadAction.Left,
-            GamepadControl.DPadRight or GamepadControl.LeftStickRight => PadAction.Right,
-            _ => PadAction.None
-        }, timestamp, repeat);
+        new(controller, control, DirectionAction(control), timestamp, repeat);
+
+    private static PadAction DirectionAction(GamepadControl control) => control switch
+    {
+        GamepadControl.DPadUp or GamepadControl.LeftStickUp => PadAction.Up,
+        GamepadControl.DPadDown or GamepadControl.LeftStickDown => PadAction.Down,
+        GamepadControl.DPadLeft or GamepadControl.LeftStickLeft => PadAction.Left,
+        GamepadControl.DPadRight or GamepadControl.LeftStickRight => PadAction.Right,
+        _ => PadAction.None
+    };
 
     private static GamepadControl SelectDirection(ControllerState state, GamepadButtons buttons)
     {
         var dpad = SelectDPad(state.Direction, buttons);
         if (dpad != GamepadControl.None) return dpad;
-
         int horizontal = state.StickRight ? 1 : state.StickLeft ? -1 : 0;
         int vertical = state.StickUp ? 1 : state.StickDown ? -1 : 0;
         if (horizontal == 0 && vertical == 0) return GamepadControl.None;
@@ -136,7 +255,6 @@ public sealed class GamepadInputEngine
         if (up && down) up = down = false;
         if (left && right) left = right = false;
         if (!up && !down && !left && !right) return GamepadControl.None;
-
         bool previousActive = previous switch
         {
             GamepadControl.DPadUp => up,
@@ -172,12 +290,22 @@ public sealed class GamepadInputEngine
     private static bool UpdatePositive(bool active, short value) => active ? value > StickRelease : value >= StickActivation;
     private static bool UpdateNegative(bool active, short value) => active ? value < -StickRelease : value <= -StickActivation;
 
+    private void Record(GamepadCommand command, GamepadDiagnosticResult result) =>
+        AddDiagnostic(new(command.Timestamp, command.ControllerId, command.Control, command.Action, command.IsRepeat, result));
+
+    private void AddDiagnostic(GamepadDiagnosticEvent entry)
+    {
+        if (diagnostics.Count == DiagnosticCapacity) diagnostics.Dequeue();
+        diagnostics.Enqueue(entry);
+    }
+
     private sealed class ControllerState
     {
         public GamepadButtons Buttons;
         public GamepadControl Direction;
         public long NextRepeat;
         public short LeftX, LeftY;
+        public bool Baselined;
         public bool StickUp, StickDown, StickLeft, StickRight;
     }
 }
