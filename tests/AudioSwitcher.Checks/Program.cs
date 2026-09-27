@@ -141,5 +141,56 @@ Check("TV shortcut actions do not repeat while held", () => {
     Equal(true, gate.Accept(PadAction.Settings, 920));
     Equal(false, gate.Accept(PadAction.Settings, 1500));
 });
+Check("Button edges fire once", () => {
+    var engine = new GamepadInputEngine();
+    var pressed = new GamepadSnapshot(0, true, 1, GamepadButtons.A, 0, 0);
+    var first = engine.Update([pressed], 0, true);
+    Equal(1, first.Count); Equal(PadAction.Confirm, first[0].Action); Equal(GamepadControl.Confirm, first[0].Control);
+    Equal(0, engine.Update([pressed with { Packet = 2 }], 500, true).Count);
+    Equal(0, engine.Update([pressed with { Packet = 3, Buttons = GamepadButtons.None }], 510, true).Count);
+    Equal(1, engine.Update([pressed with { Packet = 4 }], 520, true).Count);
+});
+Check("Directions repeat at 400 and 140 milliseconds", () => {
+    var engine = new GamepadInputEngine();
+    var down = new GamepadSnapshot(0, true, 1, GamepadButtons.DPadDown, 0, 0);
+    var initial = engine.Update([down], 0, true);
+    Equal(1, initial.Count); Equal(false, initial[0].IsRepeat); Equal(PadAction.Down, initial[0].Action);
+    Equal(0, engine.Update([down with { Packet = 2 }], 399, true).Count);
+    var firstRepeat = engine.Update([down with { Packet = 3 }], 400, true);
+    Equal(1, firstRepeat.Count); Equal(true, firstRepeat[0].IsRepeat);
+    Equal(0, engine.Update([down with { Packet = 4 }], 539, true).Count);
+    Equal(1, engine.Update([down with { Packet = 5 }], 540, true).Count);
+});
+Check("A changed direction does not require global neutral", () => {
+    var engine = new GamepadInputEngine();
+    var right = new GamepadSnapshot(0, true, 1, GamepadButtons.DPadRight, 0, 0);
+    Equal(PadAction.Right, engine.Update([right], 0, true).Single().Action);
+    var changed = engine.Update([right with { Packet = 2, Buttons = GamepadButtons.DPadDown }], 10, true);
+    Equal(1, changed.Count); Equal(PadAction.Down, changed[0].Action);
+});
+Check("Stick hysteresis rejects boundary noise", () => {
+    var engine = new GamepadInputEngine();
+    var state = new GamepadSnapshot(0, true, 1, GamepadButtons.None, 15999, 0);
+    Equal(0, engine.Update([state], 0, true).Count);
+    Equal(PadAction.Right, engine.Update([state with { Packet = 2, LeftX = 16000 }], 10, true).Single().Action);
+    Equal(0, engine.Update([state with { Packet = 3, LeftX = 12000 }], 20, true).Count);
+    Equal(0, engine.Update([state with { Packet = 4, LeftX = 10000 }], 30, true).Count);
+    Equal(PadAction.Right, engine.Update([state with { Packet = 5, LeftX = 16000 }], 40, true).Single().Action);
+});
+Check("Context suppression affects only its source", () => {
+    var engine = new GamepadInputEngine();
+    var confirmState = new GamepadSnapshot(0, true, 1, GamepadButtons.A, 0, 0);
+    var confirm = engine.Update([confirmState], 0, true).Single();
+    engine.Report(confirm, GamepadCommandResult.ContextChanged);
+    var close = engine.Update([confirmState with { Packet = 2, Buttons = GamepadButtons.A | GamepadButtons.B }], 10, true);
+    Equal(1, close.Count); Equal(PadAction.Close, close[0].Action);
+    Equal(0, engine.Update([confirmState with { Packet = 3 }], 20, true).Count);
+});
+Check("Simultaneous controls retain action priority", () => {
+    var engine = new GamepadInputEngine();
+    var all = GamepadButtons.A | GamepadButtons.B | GamepadButtons.X | GamepadButtons.Y | GamepadButtons.Menu | GamepadButtons.View | GamepadButtons.DPadDown;
+    var command = engine.Update([new GamepadSnapshot(0, true, 1, all, 0, 0)], 0, true).Single();
+    Equal(PadAction.Close, command.Action); Equal(GamepadControl.Close, command.Control);
+});
 Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: 0");
 return failed == 0 ? 0 : 1;

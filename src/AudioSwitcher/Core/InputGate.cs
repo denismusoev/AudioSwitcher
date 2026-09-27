@@ -1,10 +1,4 @@
 namespace AudioSwitcher.Core;
-public enum PadAction
-{
-    None, Up, Down, Left, Right, Confirm, Close,
-    Secondary, CreateOrEdit, Settings, Details,
-    ToggleList = Secondary
-}
 public sealed class InputGate
 {
     private PadAction previous;
