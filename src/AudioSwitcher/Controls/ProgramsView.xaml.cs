@@ -29,6 +29,8 @@ public partial class ProgramsView : UserControl
     private bool operating, editorOpen;
     private int lifetimeGeneration;
     private int refreshingGeneration = -1;
+    private CancellationTokenSource? runningLoadingLifetime;
+    private readonly TimeSpan runningLoadingDelay = TimeSpan.FromMilliseconds(250);
     private string snapshotSignature = "";
     private RunningProgram? currentProgram;
     private LaunchEntry? currentEntry;
@@ -71,12 +73,17 @@ public partial class ProgramsView : UserControl
             lifetime = new();
             lifetimeGeneration++;
             catalog = store.Load(); ShowCatalog(); UpdateLists();
+            if (!Navigation.LaunchList) BeginRunningLoadingIndicator();
             if (catalog.Error != null && Navigation.LaunchList) Notify("Каталог недоступен. Можно сохранить копию и сбросить", catalog.Error);
-            ObserveUiTask(RefreshAsync(), "Не удалось загрузить приложения");
+            ObserveUiTask(RefreshAsync(quiet: true), "Не удалось загрузить приложения");
         }
         if (focus) FocusFirstItem();
     }
-    public void Leave() { lifetime?.Cancel(); lifetime?.Dispose(); lifetime = null; }
+    public void Leave()
+    {
+        StopRunningLoadingIndicator();
+        lifetime?.Cancel(); lifetime?.Dispose(); lifetime = null;
+    }
     public async Task RefreshAsync(bool quiet = false)
     {
         int generation = lifetimeGeneration;
@@ -95,7 +102,47 @@ public partial class ProgramsView : UserControl
             global::AudioSwitcher.DiagnosticLog.Error("programs.refresh", ex);
             if (active == lifetime) Notify("Не удалось загрузить приложения", ex.Message);
         }
-        finally { if (refreshingGeneration == generation) refreshingGeneration = -1; }
+        finally
+        {
+            if (refreshingGeneration == generation) refreshingGeneration = -1;
+            if (generation == lifetimeGeneration) StopRunningLoadingIndicator();
+        }
+    }
+
+    private void BeginRunningLoadingIndicator()
+    {
+        StopRunningLoadingIndicator();
+        if (Navigation.LaunchList || Navigation.Section != AppSection.Running || RunningList.Items.Count != 0) return;
+        EmptyPrograms.Visibility = Visibility.Collapsed;
+        var active = lifetime;
+        if (active == null) return;
+        var indicator = new CancellationTokenSource();
+        runningLoadingLifetime = indicator;
+        _ = ShowRunningLoadingAfterDelayAsync(active, indicator.Token);
+    }
+
+    private async Task ShowRunningLoadingAfterDelayAsync(CancellationTokenSource activeLifetime, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(runningLoadingDelay, token);
+            if (ReferenceEquals(activeLifetime, lifetime) && !token.IsCancellationRequested) ShowRunningLoading();
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    private void StopRunningLoadingIndicator()
+    {
+        runningLoadingLifetime?.Cancel();
+        runningLoadingLifetime?.Dispose();
+        runningLoadingLifetime = null;
+    }
+
+    private void ShowRunningLoading()
+    {
+        if (Navigation.Section != AppSection.Running || Navigation.LaunchList || InPanel || RunningList.Items.Count != 0) return;
+        EmptyPrograms.Text = "Загрузка приложений…";
+        EmptyPrograms.Visibility = Visibility.Visible;
     }
     public Task SynchronizeGamesAsync(bool quiet = false) => SynchronizeGamesAsync(quiet, CancellationToken.None);
 
@@ -185,6 +232,7 @@ public partial class ProgramsView : UserControl
             }
             else if (Navigation.Panel == ProgramPanel.CloseWindows) ShowCloseChoices(latest);
         }
+        StopRunningLoadingIndicator();
         UpdateEmpty(); if (!quiet) Notify("Готово");
     }
     private void Notify(string text, string? details = null)
@@ -228,7 +276,7 @@ public partial class ProgramsView : UserControl
             catalog = store.Load(); ShowCatalog(); UpdateEmpty();
             Notify(catalog.Error == null ? "Готово" : "Каталог недоступен. Можно сохранить копию и сбросить", catalog.Error);
         }
-        else ObserveUiTask(RefreshAsync(), "Не удалось загрузить приложения");
+        else ObserveUiTask(RefreshAsync(quiet: true), "Не удалось загрузить приложения");
         if (Navigation.SectionActive) FocusFirstItem();
     }
     public void Move(int direction)

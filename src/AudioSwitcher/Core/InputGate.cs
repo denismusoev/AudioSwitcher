@@ -10,7 +10,10 @@ public sealed class InputGate
     private PadAction previous;
     private long nextRepeat;
     private bool requireRelease;
-    public void RequireRelease() => requireRelease = true;
+    public void RequireRelease()
+    {
+        if (previous != PadAction.None) requireRelease = true;
+    }
     public bool Accept(PadAction action, long milliseconds)
     {
         if (requireRelease)

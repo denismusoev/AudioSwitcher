@@ -127,6 +127,12 @@ Check("Confirmation is rearmed only after all gamepad controls are released", ()
     Equal(true, gate.Accept(PadAction.Confirm, 1400));
     Equal(false, gate.Accept(PadAction.Confirm, 2000));
 });
+Check("A release barrier does not swallow a new action after neutral input", () => {
+    var gate = new InputGate();
+    Equal(false, gate.Accept(PadAction.None, 0));
+    gate.RequireRelease();
+    Equal(true, gate.Accept(PadAction.Close, 10));
+});
 Check("TV shortcut actions do not repeat while held", () => {
     var gate = new InputGate();
     Equal(true, gate.Accept(PadAction.Secondary, 0));

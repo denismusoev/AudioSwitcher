@@ -222,6 +222,19 @@ internal static class SelectedFixChecks
                         return Task.CompletedTask;
                     });
 
+                    await Check("A chrome-only context update does not interrupt navigation repeat", () =>
+                    {
+                        var gate = (InputGate)(typeof(MainWindow).GetField("gate", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window)
+                            ?? throw new Exception("Main window input gate is unavailable"));
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        var changed = (Action?)(typeof(ProgramsView).GetField("ContextChanged", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(programs));
+                        Require(gate.Accept(PadAction.Down, 0), "Initial navigation action was rejected");
+                        changed?.Invoke();
+                        Require(gate.Accept(PadAction.Down, 400), "A visual context update swallowed a valid navigation repeat");
+                        gate.Accept(PadAction.None, 410);
+                        return Task.CompletedTask;
+                    });
+
                     await Check("Primary work area carries the target monitor DPI", () =>
                     {
                         var area = WindowPlacement.PrimaryWorkArea();
@@ -298,6 +311,35 @@ internal static class SelectedFixChecks
                         Require(selected.IsKeyboardFocused, "The recreated selected row did not regain keyboard focus");
                     });
 
+                    await Check("Entering Running does not flash a global loading status", () =>
+                    {
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        programs.Navigation.Panel = ProgramPanel.List;
+                        programs.Navigation.LeaveSection();
+                        Call(window, "SwitchSection", AppSection.Control);
+                        Call(window, "SetStatus", "Готово", null);
+                        Call(window, "SwitchSection", AppSection.Running);
+                        Require(((TextBlock)window.FindName("Status")).Text != "Загрузка приложений…", "Running refresh flashed a global loading status");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Long Running refresh uses an inline loading state", () =>
+                    {
+                        var programs = (ProgramsView)window.FindName("Programs");
+                        var showLoading = typeof(ProgramsView).GetMethod("ShowRunningLoading", BindingFlags.Instance | BindingFlags.NonPublic)
+                            ?? throw new Exception("Running list has no local loading state");
+                        programs.Navigation.Section = AppSection.Running;
+                        programs.Navigation.LaunchList = false;
+                        programs.Navigation.Panel = ProgramPanel.List;
+                        var empty = (TextBlock)programs.FindName("EmptyPrograms");
+                        ((ListBox)programs.FindName("RunningList")).ItemsSource = null;
+                        empty.Visibility = Visibility.Collapsed;
+                        showLoading.Invoke(programs, null);
+                        Require(empty.Visibility == Visibility.Visible && empty.Text == "Загрузка приложений…", "Running loading was not rendered inside the list");
+                        programs.Leave();
+                        return Task.CompletedTask;
+                    });
+
                     await Check("Refresh state is scoped to its lifetime generation", () =>
                     {
                         var method = typeof(ProgramsView).GetMethod("CanStartRefresh", BindingFlags.Static | BindingFlags.NonPublic);
@@ -319,6 +361,36 @@ internal static class SelectedFixChecks
                         var method = typeof(MainWindow).GetMethod("OpenDevicePickerAsync", BindingFlags.Instance | BindingFlags.NonPublic);
                         Require(method != null && typeof(Task).IsAssignableFrom(method.ReturnType), "Device picker still enumerates devices synchronously on the UI thread");
                         return Task.CompletedTask;
+                    });
+
+                    await Check("Device picker opens immediately and reports a stalled load", async () =>
+                    {
+                        Call(window, "CloseDetails");
+                        var timeoutField = typeof(MainWindow).GetField("deviceLoadTimeout", BindingFlags.Instance | BindingFlags.NonPublic)
+                            ?? throw new Exception("Device loading has no bounded timeout");
+                        var operations = (SemaphoreSlim)(typeof(MainWindow).GetField("deviceOperations", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window)
+                            ?? throw new Exception("Device operation gate is unavailable"));
+                        var originalTimeout = (TimeSpan)timeoutField.GetValue(window)!;
+                        await operations.WaitAsync();
+                        try
+                        {
+                            timeoutField.SetValue(window, TimeSpan.FromMilliseconds(40));
+                            var opening = (Task)Call(window, "OpenDevicePickerAsync", false)!;
+                            window.UpdateLayout();
+                            Require(((FrameworkElement)window.FindName("DevicePickerOverlay")).IsVisible, "Picker stayed hidden while devices were loading");
+                            Require(((FrameworkElement)window.FindName("PickerLoading")).IsVisible, "Picker has no local loading state");
+                            Require(((TextBlock)window.FindName("Status")).Text != "Загрузка устройств…", "Global status remained stuck in device loading");
+                            Call(window, "CloseDetails");
+                            var busy = (bool)(typeof(MainWindow).GetField("busy", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window) ?? true);
+                            Require(!busy, "Closing a pending picker left the window input-blocked");
+                            await opening;
+                        }
+                        finally
+                        {
+                            operations.Release();
+                            timeoutField.SetValue(window, originalTimeout);
+                            Call(window, "CloseDetails");
+                        }
                     });
 
                     await Check("Device apply exposes an asynchronous UI contract", () =>

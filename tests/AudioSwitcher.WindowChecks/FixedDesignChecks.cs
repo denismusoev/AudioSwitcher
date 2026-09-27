@@ -327,7 +327,7 @@ internal static class FixedDesignChecks
             Capture(window, "tv-targeted-control.png");
 
             Call(window, "SwitchSection", AppSection.Running);
-            Require(((TextBlock)window.FindName("Status")).Text == "Загрузка приложений…", "Selecting Running did not start loading its contents");
+            Require(((TextBlock)window.FindName("Status")).Text != "Загрузка приложений…", "Selecting Running flashed a global loading status");
             Require(!programs.Navigation.SectionActive, "Selecting Running entered its contents");
             Call(window, "Execute", PadAction.Confirm);
             Require(programs.Navigation.SectionActive, "Confirm did not enter the selected section");

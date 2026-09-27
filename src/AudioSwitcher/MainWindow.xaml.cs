@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -30,10 +31,12 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource lifetime = new();
     private readonly CancellationToken lifetimeToken;
     private readonly SemaphoreSlim deviceOperations = new(1, 1);
+    private TimeSpan deviceLoadTimeout = TimeSpan.FromSeconds(8);
     private readonly ApplicationSettingsStore settingsStore;
     private readonly InterfaceSettings interfaceSettings;
     private NavigationState navigation => Programs.Navigation;
-    private bool busy, padArmed, pickingDisplay, controlRefreshing, closed;
+    private bool busy, loadingDevices, padArmed, pickingDisplay, pickerLoadFailed, controlRefreshing, closed;
+    private int deviceLoadGeneration;
     private WindowSelectionAction windowSelectionAction;
     private RunningProgram? windowSelectionProgram;
     private OverlayMode overlay;
@@ -60,7 +63,7 @@ public partial class MainWindow : Window
         Programs.DeleteConfirmationRequested += OpenDeleteConfirmation;
         Programs.ResetConfirmationRequested += OpenResetConfirmation;
         Programs.WindowSelectionRequested += OpenWindowPicker;
-        Programs.ContextChanged += () => { gate.RequireRelease(); UpdateChrome(); };
+        Programs.ContextChanged += UpdateChrome;
         interfaceSettings = new InterfaceSettings(Application.Current, UpdateAppearance);
         SizeChanged += (_, _) => UpdateAppearance();
         SourceInitialized += (_, _) => ApplyPreferredSize();
@@ -156,11 +159,45 @@ public partial class MainWindow : Window
         ? Task.CompletedTask
         : Programs.SynchronizeGamesAsync(quiet, lifetimeToken);
 
-    private async Task<T> RunDeviceOperationAsync<T>(Func<T> operation)
+    private async Task<T> RunDeviceOperationAsync<T>(Func<T> operation, TimeSpan? timeout = null)
     {
         var token = lifetimeToken;
-        await deviceOperations.WaitAsync(token);
-        try { return await Task.Run(operation, token); }
+        var elapsed = Stopwatch.StartNew();
+        if (timeout is TimeSpan limit)
+        {
+            if (!await deviceOperations.WaitAsync(limit, token))
+                throw new TimeoutException("Windows не ответила на запрос устройств вовремя.");
+        }
+        else await deviceOperations.WaitAsync(token);
+
+        bool releaseHere = true;
+        try
+        {
+            TimeSpan? remaining = timeout - elapsed.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+                throw new TimeoutException("Windows не ответила на запрос устройств вовремя.");
+            var task = Task.Run(operation, CancellationToken.None);
+            try
+            {
+                return remaining is TimeSpan wait ? await task.WaitAsync(wait, token) : await task;
+            }
+            catch (Exception error) when (error is TimeoutException or OperationCanceledException && !task.IsCompleted)
+            {
+                releaseHere = false;
+                _ = ReleaseDeviceOperationWhenCompleteAsync(task);
+                throw;
+            }
+        }
+        finally
+        {
+            if (releaseHere) deviceOperations.Release();
+        }
+    }
+
+    private async Task ReleaseDeviceOperationWhenCompleteAsync(Task operation)
+    {
+        try { await operation; }
+        catch { }
         finally { deviceOperations.Release(); }
     }
 
@@ -275,7 +312,7 @@ public partial class MainWindow : Window
         bool editing = Programs.Editing;
         bool panel = Programs.InPanel;
         bool sectionActive = navigation.SectionActive;
-        PrimaryCommand.Content = overlay == OverlayMode.Settings ? "переключить" : overlay == OverlayMode.Error ? "закрыть" : overlay != OverlayMode.None ? "выбрать" : !sectionActive ? "открыть" : editing ? "поле" : navigation.Section == AppSection.Running && !panel ? "на экран" : navigation.Section == AppSection.Launch && !panel ? "запустить" : "выбрать";
+        PrimaryCommand.Content = overlay == OverlayMode.Settings ? "переключить" : overlay == OverlayMode.Error ? "закрыть" : overlay == OverlayMode.Devices && pickerLoadFailed ? "повторить" : overlay != OverlayMode.None ? "выбрать" : !sectionActive ? "открыть" : editing ? "поле" : navigation.Section == AppSection.Running && !panel ? "на экран" : navigation.Section == AppSection.Launch && !panel ? "запустить" : "выбрать";
         SecondaryCommand.Content = editing ? "удалить" : navigation.Section == AppSection.Running ? "закрыть" : "изменить";
         CreateCommand.Content = editing ? "сохранить" : "добавить";
         SecondaryCommand.Visibility = overlay == OverlayMode.None && sectionActive && (editing ? Programs.CanDeleteEditing
@@ -290,31 +327,49 @@ public partial class MainWindow : Window
 
     private async Task OpenDevicePickerAsync(bool displays)
     {
-        if (closed || busy || overlay != OverlayMode.None) return;
+        if (closed || busy || overlay != OverlayMode.None && overlay != OverlayMode.Devices) return;
         busy = true;
+        loadingDevices = true;
         pickingDisplay = displays;
+        pickerLoadFailed = false;
+        int generation = ++deviceLoadGeneration;
+        PickerTitle.Text = displays ? "Основной экран" : "Устройство звука";
+        PickerSubtitle.Text = displays ? "Выберите экран, который станет главным" : "Выберите устройство вывода по умолчанию";
+        Devices.ItemsSource = null;
+        Devices.SelectedItem = null;
+        Empty.Visibility = Visibility.Collapsed;
+        PickerError.Visibility = Visibility.Collapsed;
+        PickerLoading.Visibility = Visibility.Visible;
+        if (overlay == OverlayMode.None) ShowOverlay(OverlayMode.Devices);
         UpdateChrome();
-        SetStatus("Загрузка устройств…");
         try
         {
-            var items = await RunDeviceOperationAsync(() => displays ? display.GetDevices() : audio.GetDevices());
-            if (closed) return;
+            var items = await RunDeviceOperationAsync(() => displays ? display.GetDevices() : audio.GetDevices(), deviceLoadTimeout);
+            if (closed || generation != deviceLoadGeneration || overlay != OverlayMode.Devices) return;
             Devices.ItemsSource = items;
             Devices.SelectedItem = items.FirstOrDefault(x => x.IsDefault) ?? items.FirstOrDefault();
             Empty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            PickerTitle.Text = displays ? "Основной экран" : "Устройство звука";
-            PickerSubtitle.Text = displays ? "Выберите экран, который станет главным" : "Выберите устройство вывода по умолчанию";
-            ShowOverlay(OverlayMode.Devices);
+            PickerLoading.Visibility = Visibility.Collapsed;
+            SetStatus("Готово");
             FocusSelection(Devices);
         }
         catch (OperationCanceledException) when (closed) { }
         catch (Exception ex)
         {
             DiagnosticLog.Error("device_picker.load", ex, new Dictionary<string, object?> { ["kind"] = displays ? "display" : "audio" });
-            if (!closed) ShowError("Не удалось загрузить устройства", ex.Message);
+            if (!closed && generation == deviceLoadGeneration && overlay == OverlayMode.Devices)
+            {
+                PickerLoading.Visibility = Visibility.Collapsed;
+                PickerErrorText.Text = ex is TimeoutException ? "Windows не ответила на запрос устройств вовремя" : "Не удалось загрузить устройства";
+                PickerError.Visibility = Visibility.Visible;
+                pickerLoadFailed = true;
+                SetStatus("Не удалось загрузить устройства", ex.Message);
+                Devices.Focus();
+            }
         }
         finally
         {
+            loadingDevices = false;
             busy = false;
             if (!closed) UpdateChrome();
         }
@@ -439,6 +494,11 @@ public partial class MainWindow : Window
             gate.RequireRelease();
             UpdateChrome();
             return true;
+        }
+        if (overlay == OverlayMode.Devices)
+        {
+            deviceLoadGeneration++;
+            if (loadingDevices) { loadingDevices = false; busy = false; }
         }
         overlay = OverlayMode.None;
         overlayReturnMode = OverlayMode.None;
@@ -585,7 +645,8 @@ public partial class MainWindow : Window
             else if (overlay == OverlayMode.Confirmation && action == PadAction.Down) MoveOverlaySelection(ConfirmationChoices, 1);
             else if (action == PadAction.Confirm)
             {
-                if (overlay == OverlayMode.Devices) ObserveUiTask(ApplySelected(), "Не удалось переключить");
+                if (overlay == OverlayMode.Devices && pickerLoadFailed) OpenDevicePicker(pickingDisplay);
+                else if (overlay == OverlayMode.Devices) ObserveUiTask(ApplySelected(), "Не удалось переключить");
                 else if (overlay == OverlayMode.WindowSelection) ObserveUiTask(ApplyWindowSelection(), "Не удалось выполнить действие");
                 else if (overlay == OverlayMode.Confirmation) ObserveUiTask(ApplyConfirmation(), "Не удалось выполнить действие");
                 else ToggleSetting();
