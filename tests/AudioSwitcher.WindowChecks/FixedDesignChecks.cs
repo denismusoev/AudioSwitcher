@@ -49,6 +49,30 @@ internal static class FixedDesignChecks
                 "PS5 design resources are not split into merged dictionaries");
             foreach (string key in new[] { "Ps5PanelSurface", "Ps5PrimaryText", "Ps5SecondaryText", "Ps5FocusOutline", "Ps5FocusFlash" })
                 Require(app.TryFindResource(key) is Brush, $"Missing PS5 semantic brush: {key}");
+            foreach (string key in new[] { "Ps5ScreenTitleFontSize", "Ps5SettingLabelFontSize", "Ps5PageTitleFontSize", "Ps5SettingValueFontSize", "Ps5AccessoryFontSize" })
+                Require(app.TryFindResource(key) is double, $"Missing PS5 semantic font-size token: {key}");
+            var settingLabel = new TextBlock { Style = (Style)app.FindResource("Ps5SettingLabel") };
+            ((Panel)appRoot).Children.Add(settingLabel);
+            object originalLabelSize = app.Resources["Ps5SettingLabelFontSize"];
+            app.Resources["Ps5SettingLabelFontSize"] = 31.5;
+            window.UpdateLayout();
+            Require(Math.Abs(settingLabel.FontSize - 31.5) < 0.01,
+                "PS5 setting-label typography does not react to its semantic font-size token");
+            app.Resources["Ps5SettingLabelFontSize"] = originalLabelSize;
+            ((Panel)appRoot).Children.Remove(settingLabel);
+            var interfaceSettings = typeof(MainWindow).GetField("interfaceSettings", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window)
+                ?? throw new Exception("Interface settings service is unavailable");
+            var applySystemPalette = interfaceSettings.GetType().GetMethod("ApplySystemPalette", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new Exception("Interface settings cannot apply a test system palette");
+            object originalPanelSurface = app.Resources["Ps5PanelSurface"];
+            applySystemPalette.Invoke(interfaceSettings, [true]);
+            Require(ReferenceEquals(app.Resources["Ps5PanelSurface"], SystemColors.WindowBrush)
+                && ReferenceEquals(app.Resources["Ps5PrimaryText"], SystemColors.WindowTextBrush)
+                && ReferenceEquals(app.Resources["Ps5FocusedSurface"], SystemColors.HighlightBrush),
+                "High-contrast mode does not update the canonical PS5 palette");
+            applySystemPalette.Invoke(interfaceSettings, [false]);
+            Require(ReferenceEquals(app.Resources["Ps5PanelSurface"], originalPanelSurface),
+                "Leaving high-contrast mode does not restore the canonical PS5 palette");
             Console.WriteLine("PASS Application uses the static PS5 settings background and semantic resources");
             Require(!VisualAncestors(appRoot).OfType<Viewbox>().Any(), "Interactive root is still scaled by a Viewbox");
             Require(Math.Abs(appRoot.ActualWidth - window.ActualWidth) < 1 && Math.Abs(appRoot.ActualHeight - window.ActualHeight) < 1,
@@ -63,6 +87,10 @@ internal static class FixedDesignChecks
                 "Legacy focus resources are not mapped to the PS5 settings tokens");
             foreach (string key in new[] { "Ps5SettingsCategory", "Ps5SettingsRow", "Ps5Toggle", "Ps5ListItem", "Ps5ListBox" })
                 Require(app.TryFindResource(key) is Style, $"Missing shared PS5 settings style: {key}");
+            Require(app.TryFindResource("Ps5ScrollableListBox") is Style,
+                "Missing shared PS5 scrollable-list style");
+            foreach (string key in new[] { "Ps5OneLineRowTemplate", "Ps5TwoLineRowTemplate", "Ps5AccessoryRowTemplate", "Ps5WrappedChoiceRowTemplate" })
+                Require(app.TryFindResource(key) is DataTemplate, $"Missing shared PS5 row template: {key}");
             foreach (string key in new[] { "Ps5Drawer", "Ps5SettingsPane", "Ps5EditorAttribute" })
                 Require(app.TryFindResource(key) is Style, $"Missing shared PS5 overlay style: {key}");
             foreach (string key in new[] { "Ps5MotionFast", "Ps5MotionStandard", "Ps5MotionDrawer", "Ps5MotionFlash" })
@@ -139,6 +167,13 @@ internal static class FixedDesignChecks
             Require(cleanApplicationName?.Invoke(null, ["mspaint.exe"]) as string == "mspaint", "Technical executable suffix is visible");
 
             var programsView = (ProgramsView)window.FindName("Programs");
+            foreach (string name in new[] { "RunningMode", "LaunchMode", "CatalogTools", "AddProgram", "ResetCatalog", "ListSubtitle", "PanelWarning" })
+                Require(programsView.FindName(name) == null, $"Legacy hidden programme control remains in the visual tree: {name}");
+            Require(window.FindName("SettingsChoices") == null,
+                "Hidden settings list still duplicates the visible toggle state");
+            var editorProbe = new LaunchEntryDialog(null, _ => Task.CompletedTask);
+            Require(editorProbe.FindName("SaveEntry") == null,
+                "Hidden editor Save button remains in the visual tree");
             var runningList = (ListBox)programsView.FindName("RunningList");
             var launchList = (ListBox)programsView.FindName("LaunchList");
             Require(Grid.GetRow(launchList) == 1, "Launch catalogue can overlap its heading");
@@ -153,11 +188,12 @@ internal static class FixedDesignChecks
                 ("Program actions", programActions),
                 ("Devices", (ListBox)window.FindName("Devices")),
                 ("Window choices", (ListBox)window.FindName("WindowChoices")),
-                ("Delete confirmation", (ListBox)window.FindName("DeleteConfirmationChoices")),
-                ("Settings choices", (ListBox)window.FindName("SettingsChoices"))
+                ("Confirmation", (ListBox)window.FindName("ConfirmationChoices"))
             };
             foreach (var (name, list) in standardLists)
             {
+                Require(ReferenceEquals(list.Style, app.FindResource("Ps5ScrollableListBox")),
+                    $"{name} does not use the shared PS5 scrollable-list style");
                 var style = list.ItemContainerStyle ?? (Style)list.FindResource(typeof(ListBoxItem));
                 var probe = new ListBoxItem { Style = style };
                 Require(probe.MinHeight == 72
@@ -166,6 +202,49 @@ internal static class FixedDesignChecks
                     && probe.HorizontalContentAlignment == HorizontalAlignment.Stretch,
                     $"{name} row does not use the shared 72 DIP / optical 18/18/18/22 geometry");
             }
+
+            Call(window, "OpenDeleteConfirmation", "Тестовая запись");
+            window.UpdateLayout();
+            var deleteChoices = (ListBox)window.FindName("ConfirmationChoices");
+            var destructiveRow = (ListBoxItem)deleteChoices.ItemContainerGenerator.ContainerFromIndex(1);
+            var destructiveText = VisualChild<TextBlock>(destructiveRow)
+                ?? throw new Exception("Delete confirmation row has no visible text");
+            var errorBrush = (Brush)app.FindResource("Ps5ErrorText");
+            Require(ReferenceEquals(destructiveText.Foreground, errorBrush),
+                "Destructive choice text does not use the shared PS5 error brush");
+            var cancelRow = (ListBoxItem)deleteChoices.ItemContainerGenerator.ContainerFromIndex(0);
+            var press = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                Source = destructiveRow
+            };
+            Call(window, "PointerDown", window, press);
+            var dragAllowed = (bool)(typeof(MainWindow).GetField("dragAllowed", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window)
+                ?? throw new Exception("Window drag state is unavailable"));
+            Require(!dragAllowed, "Pressing a list row still starts window dragging");
+            var release = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent,
+                Source = cancelRow
+            };
+            Call(window, "PointerUp", window, release);
+            Call(window, "ConfirmationMouseClick", deleteChoices, release);
+            Require(((FrameworkElement)window.FindName("ConfirmationOverlay")).IsVisible,
+                "Releasing on a different row activates that row");
+            Call(window, "CloseDetails", true);
+            var openResetConfirmation = typeof(MainWindow).GetMethod("OpenResetConfirmation", BindingFlags.Instance | BindingFlags.NonPublic);
+            Require(openResetConfirmation != null,
+                "Catalog reset does not use the shared confirmation drawer");
+            openResetConfirmation!.Invoke(window, null);
+            window.UpdateLayout();
+            Require(((FrameworkElement)window.FindName("ConfirmationOverlay")).IsVisible
+                && ((TextBlock)window.FindName("ConfirmationTitle")).Text == "Сбросить каталог?"
+                && VisualText((DependencyObject)window.FindName("ConfirmationOverlay"))
+                    .Any(text => text.Contains(".bak", StringComparison.Ordinal)),
+                "Reset confirmation does not show its action and consequence in the shared drawer");
+            Require(((ListBox)window.FindName("ConfirmationChoices")).SelectedIndex == 0,
+                "Reset confirmation does not default to the safe Cancel choice");
+            Call(window, "CloseDetails", true);
             var primarySlot = new Border { Style = (Style)app.FindResource("Ps5ListPrimarySlot") };
             var secondarySlot = new Border { Style = (Style)app.FindResource("Ps5ListSecondarySlot") };
             Require(primarySlot.MinHeight == 32,
@@ -502,7 +581,7 @@ internal static class FixedDesignChecks
                     Check("Running applications are a root section without nested mode tabs", () =>
                     {
                         Require(programs.IsVisible && !programs.Navigation.LaunchList, "Running root not active");
-                        Require(!((FrameworkElement)programs.FindName("RunningMode")).IsVisible && !((FrameworkElement)programs.FindName("LaunchMode")).IsVisible, "Nested tabs remain visible");
+                        Require(programs.FindName("RunningMode") == null && programs.FindName("LaunchMode") == null, "Nested tabs remain in the visual tree");
                     });
                     Check("Root section hints expose only actions that work", () =>
                     {
@@ -584,7 +663,7 @@ internal static class FixedDesignChecks
                     Check("Menu opens reference-aligned settings pane with one toggle row", () =>
                     {
                         Require(((FrameworkElement)window.FindName("OverlayShade")).IsVisible && ((FrameworkElement)window.FindName("SettingsSurface")).IsVisible, "Settings overlay missing");
-                        Require(((ListBox)window.FindName("SettingsChoices")).SelectedIndex == 0, "Safe keep-open choice is not selected");
+                        Require(window.FindName("SettingsChoices") == null, "Hidden settings choices still duplicate the toggle state");
                         var settings = (FrameworkElement)window.FindName("SettingsSurface");
                         var settingsOrigin = settings.TranslatePoint(new Point(), window);
                         Require(settingsOrigin.X is >= 835 and <= 845 && settings.ActualWidth is >= 1310 and <= 1330, $"Settings pane is {settingsOrigin.X}, {settings.ActualWidth}");

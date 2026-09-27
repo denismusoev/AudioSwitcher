@@ -14,6 +14,11 @@
   <SolidColorBrush x:Key="Ps5FocusOutline" Color="#F8FAFF"/>
   <SolidColorBrush x:Key="Ps5FocusFlash" Color="#2EFFFFFF"/>
   <SolidColorBrush x:Key="Ps5ErrorText" Color="#E7AAA6"/>
+  <SolidColorBrush x:Key="Ps5InputSurface" Color="#00FFFFFF"/>
+  <SolidColorBrush x:Key="Ps5ToggleTrack" Color="#242733"/>
+  <SolidColorBrush x:Key="Ps5ToggleThumbBorder" Color="#8C8E94"/>
+  <SolidColorBrush x:Key="Ps5ToggleThumbOn" Color="#D4D4D4"/>
+  <SolidColorBrush x:Key="Ps5ModalBackdropBrush" Color="#98080A0D"/>
 
   <Thickness x:Key="Ps5FocusThickness">3</Thickness>
   <Thickness x:Key="Ps5ListRowPadding">18,18,18,22</Thickness>
@@ -23,4 +28,9 @@
   <sys:Double x:Key="Ps5ListPrimarySlotHeight">32</sys:Double>
   <sys:Double x:Key="Ps5ListSecondarySlotHeight">24</sys:Double>
   <sys:Double x:Key="Ps5DrawerWidth">450</sys:Double>
+  <sys:Double x:Key="Ps5ScreenTitleFontSize">36</sys:Double>
+  <sys:Double x:Key="Ps5SettingLabelFontSize">24</sys:Double>
+  <sys:Double x:Key="Ps5PageTitleFontSize">26</sys:Double>
+  <sys:Double x:Key="Ps5SettingValueFontSize">18</sys:Double>
+  <sys:Double x:Key="Ps5AccessoryFontSize">15</sys:Double>
 </ResourceDictionary>

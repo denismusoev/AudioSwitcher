@@ -40,8 +40,6 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
         EntryTarget.Text = picker.FileName;
         if (string.IsNullOrWhiteSpace(EntryName.Text)) EntryName.Text = Path.GetFileNameWithoutExtension(picker.FileName);
     }
-    private async void SaveClick(object sender, RoutedEventArgs e)
-        => await SaveAsync();
     public async Task SaveAsync()
     {
         if (saving) return;
@@ -111,7 +109,6 @@ public partial class LaunchEntryDialog : System.Windows.Controls.UserControl
         TargetDisplay.Visibility = editingTarget ? Visibility.Collapsed : Visibility.Visible;
     }
     public void Close() { if (!saving) { Visibility = Visibility.Collapsed; Completed?.Invoke(); } }
-    private void CancelClick(object sender, RoutedEventArgs e) => Close();
     private async void DialogKeyDown(object sender, KeyEventArgs e)
     {
         if (saving || (e.Key == Key.Enter && e.IsRepeat)) e.Handled = true;

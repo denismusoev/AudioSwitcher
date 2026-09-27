@@ -4,6 +4,7 @@
   <Style x:Key="Ps5ListItem" TargetType="ListBoxItem">
     <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
     <Setter Property="Foreground" Value="{DynamicResource Ps5PrimaryText}"/>
+    <Setter Property="AutomationProperties.Name" Value="{Binding DisplayName}"/>
     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
     <Setter Property="Margin" Value="0,2"/>
@@ -63,7 +64,83 @@
   </Style>
 
   <Style x:Key="Ps5ListAccessoryText" TargetType="TextBlock" BasedOn="{StaticResource Ps5ListSecondaryText}">
-    <Setter Property="FontSize" Value="{DynamicResource Font24}"/>
+    <Setter Property="FontSize" Value="{DynamicResource Ps5AccessoryFontSize}"/>
+  </Style>
+
+  <DataTemplate x:Key="Ps5OneLineRowTemplate">
+    <Border Style="{StaticResource Ps5ListPrimarySlot}">
+      <TextBlock x:Name="PrimaryText" Text="{Binding DisplayName}" Style="{StaticResource Ps5ListPrimaryText}"/>
+    </Border>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsDestructive}" Value="True">
+        <Setter TargetName="PrimaryText" Property="Foreground" Value="{DynamicResource Ps5ErrorText}"/>
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+
+  <DataTemplate x:Key="Ps5TwoLineRowTemplate">
+    <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Border Style="{StaticResource Ps5ListPrimarySlot}">
+        <TextBlock x:Name="PrimaryText" Text="{Binding DisplayName}" Style="{StaticResource Ps5ListPrimaryText}"/>
+      </Border>
+      <Border Grid.Row="1" Style="{StaticResource Ps5ListSecondarySlot}">
+        <TextBlock Text="{Binding DisplayDetails}" Style="{StaticResource Ps5ListSecondaryText}"/>
+      </Border>
+    </Grid>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsDestructive}" Value="True">
+        <Setter TargetName="PrimaryText" Property="Foreground" Value="{DynamicResource Ps5ErrorText}"/>
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+
+  <DataTemplate x:Key="Ps5AccessoryRowTemplate">
+    <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Border Style="{StaticResource Ps5ListPrimarySlot}">
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <TextBlock Text="{Binding DisplayName}" Style="{StaticResource Ps5ListPrimaryText}"/>
+          <TextBlock Grid.Column="1" Text="{Binding Marker}" Margin="16,0,0,0" Style="{StaticResource Ps5ListAccessoryText}"/>
+        </Grid>
+      </Border>
+      <Border Grid.Row="1" Style="{StaticResource Ps5ListSecondarySlot}">
+        <TextBlock Text="{Binding DisplayDetails}" Style="{StaticResource Ps5ListSecondaryText}"/>
+      </Border>
+    </Grid>
+  </DataTemplate>
+
+  <DataTemplate x:Key="Ps5WrappedChoiceRowTemplate">
+    <Border Style="{StaticResource Ps5ListPrimarySlot}">
+      <TextBlock x:Name="PrimaryText" Text="{Binding DisplayName}" Style="{StaticResource Ps5ListPrimaryText}"
+                 TextTrimming="None" TextWrapping="Wrap"/>
+    </Border>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsDestructive}" Value="True">
+        <Setter TargetName="PrimaryText" Property="Foreground" Value="{DynamicResource Ps5ErrorText}"/>
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+
+  <Style x:Key="MinimalScrollBar" TargetType="ScrollBar">
+    <Setter Property="Width" Value="4"/><Setter Property="MinWidth" Value="0"/><Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+      <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="Vertical" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+        <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" IsTabStop="False" Opacity="0"/></Track.DecreaseRepeatButton>
+        <Track.Thumb><Thumb MinWidth="0" MinHeight="23"><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="{DynamicResource Ps5SecondaryText}" Opacity="0.72" CornerRadius="2"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+        <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" IsTabStop="False" Opacity="0"/></Track.IncreaseRepeatButton>
+      </Track>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+
+  <Style x:Key="DeviceScrollViewer" TargetType="ScrollViewer">
+    <Setter Property="VerticalScrollBarVisibility" Value="Auto"/><Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollViewer"><Grid ClipToBounds="True">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/></Grid.ColumnDefinitions>
+      <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" ClipToBounds="True" CanContentScroll="{TemplateBinding CanContentScroll}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" Margin="{TemplateBinding Padding}"/>
+      <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Style="{StaticResource MinimalScrollBar}" Orientation="Vertical" HorizontalAlignment="Right" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Value="{Binding VerticalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}"/>
+    </Grid></ControlTemplate></Setter.Value></Setter>
   </Style>
 
   <Style x:Key="Ps5ListBox" TargetType="ListBox">
@@ -77,5 +154,15 @@
         <ItemsPanelTemplate><controls:DeviceRowsPanel ClipToBounds="True"/></ItemsPanelTemplate>
       </Setter.Value>
     </Setter>
+  </Style>
+
+  <Style x:Key="Ps5ScrollableListBox" TargetType="ListBox" BasedOn="{StaticResource Ps5ListBox}">
+    <Setter Property="VerticalAlignment" Value="Top"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox">
+      <ScrollViewer Style="{StaticResource DeviceScrollViewer}" Focusable="False" CanContentScroll="True"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ItemsPresenter/>
+      </ScrollViewer>
+    </ControlTemplate></Setter.Value></Setter>
   </Style>
 </ResourceDictionary>

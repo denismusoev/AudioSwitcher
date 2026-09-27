@@ -67,10 +67,10 @@ internal static class ApprovedDesignChecks
                         Require(settings.Tag?.ToString() is "☰", $"Menu badge is still '{settings.Tag}'");
                     });
 
-                    Check("Existing focus outline and fill tokens remain unchanged", () =>
+                    Check("Approved focus outline and fill tokens remain unchanged", () =>
                     {
-                        Require((Thickness)app.FindResource("FocusBorderThickness") == new Thickness(2), "Focus outline thickness changed");
-                        Require(app.FindResource("SelectedSurface") is SolidColorBrush brush && brush.Color == Color.FromArgb(0x0C, 0xFF, 0xFF, 0xFF),
+                        Require((Thickness)app.FindResource("FocusBorderThickness") == new Thickness(3), "Focus outline thickness changed");
+                        Require(app.FindResource("SelectedSurface") is SolidColorBrush brush && brush.Color == Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF),
                             "Focused background fill changed");
                     });
 
@@ -119,11 +119,10 @@ internal static class ApprovedDesignChecks
                         Call(window, "SwitchSection", AppSection.Launch);
                         var programs = (ProgramsView)window.FindName("Programs");
                         var listsSurface = (Grid)programs.FindName("ListsSurface");
-                        var subtitle = (TextBlock)programs.FindName("ListSubtitle");
                         Require(Math.Abs(listsSurface.RowDefinitions[0].MinHeight - 80) < 0.01,
                             $"Program-list header remains {listsSurface.RowDefinitions[0].MinHeight}");
-                        Require(subtitle.Visibility == Visibility.Collapsed && string.IsNullOrEmpty(subtitle.Text),
-                            $"Launch subtitle is still visible: '{subtitle.Text}'");
+                        Require(programs.FindName("ListSubtitle") == null,
+                            "Launch subtitle still occupies the programme header");
                     });
 
                     Check("Launch path grows the row below an unchanged program title", () =>
@@ -196,8 +195,8 @@ internal static class ApprovedDesignChecks
                         window.UpdateLayout();
 
                         var picker = (Border)window.FindName("DevicePickerOverlay");
-                        var confirmation = (Border)window.FindName("DeleteConfirmationOverlay");
-                        var choices = (ListBox)window.FindName("DeleteConfirmationChoices");
+                        var confirmation = (Border)window.FindName("ConfirmationOverlay");
+                        var choices = (ListBox)window.FindName("ConfirmationChoices");
                         Require(confirmation.IsVisible, $"Delete confirmation overlay is not visible; editing={programs.Editing}, panel={programs.Navigation.Panel}");
                         Require(Math.Abs(confirmation.ActualWidth - picker.Width) < 0.5,
                             $"Delete confirmation width {confirmation.ActualWidth:0.##} differs from picker width {picker.Width:0.##}");
@@ -210,9 +209,10 @@ internal static class ApprovedDesignChecks
                             && cancel.IsKeyboardFocused,
                             "Delete confirmation does not focus Cancel by default");
                         var delete = (ListBoxItem)choices.ItemContainerGenerator.ContainerFromIndex(1);
-                        Require(delete.Foreground == app.FindResource("ErrorText"),
+                        var deleteText = Descendants<TextBlock>(delete).First(text => text.Text == "Удалить запись");
+                        Require(ReferenceEquals(deleteText.Foreground, app.FindResource("Ps5ErrorText")),
                             "Delete action does not use the danger foreground");
-                        var title = (TextBlock)window.FindName("DeleteConfirmationTitle");
+                        var title = (TextBlock)window.FindName("ConfirmationTitle");
                         Require(title.Text.Contains(entry.Name) && title.TextWrapping == TextWrapping.Wrap,
                             "Delete confirmation does not show the full record identity");
 
@@ -238,14 +238,10 @@ internal static class ApprovedDesignChecks
                         host.Close();
                     });
 
-                    Check("Internal window-picker heading keeps the parent heading origin", () =>
+                    Check("External window-picker heading uses the shared drawer inset", () =>
                     {
                         Call(window, "SwitchSection", AppSection.Running);
                         var programs = (ProgramsView)window.FindName("Programs");
-                        var listTitle = (TextBlock)programs.FindName("ListTitle");
-                        window.UpdateLayout();
-                        Point parentOrigin = listTitle.TranslatePoint(new Point(), programs);
-
                         programs.Leave();
                         using var process = Process.GetCurrentProcess();
                         var identity = new ProcessIdentity(process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc());
@@ -261,13 +257,15 @@ internal static class ApprovedDesignChecks
                         Call(window, "Execute", PadAction.Confirm);
                         programs.ConfirmAsync().GetAwaiter().GetResult();
                         window.UpdateLayout();
-                        var panelTitle = (TextBlock)programs.FindName("PanelTitle");
-                        var panelCard = (Border)programs.FindName("PanelCard");
-                        Point childOrigin = panelTitle.TranslatePoint(new Point(), programs);
-                        Require(Math.Abs(parentOrigin.X - childOrigin.X) < 0.5 && Math.Abs(parentOrigin.Y - childOrigin.Y) < 0.5,
-                            $"Parent heading is at {parentOrigin}; internal heading is at {childOrigin}");
-                        Require(Math.Abs(panelCard.MinHeight - 69) < 0.01,
-                            $"Internal contextual header changed to {panelCard.MinHeight}");
+                        var overlay = (Border)window.FindName("WindowPickerOverlay");
+                        var title = (TextBlock)window.FindName("WindowPickerTitle");
+                        var headingGroup = (FrameworkElement)title.Parent;
+                        var titleInset = new Point(
+                            overlay.Padding.Left + headingGroup.Margin.Left,
+                            overlay.Padding.Top + headingGroup.Margin.Top);
+                        Require(titleInset == new Point(27, 28),
+                            $"Window drawer title uses {titleInset} instead of the shared 27;28 inset");
+                        Call(window, "Execute", PadAction.Close);
                     });
                 }
                 finally

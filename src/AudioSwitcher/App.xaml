@@ -70,24 +70,6 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="ListBoxItem" BasedOn="{StaticResource Ps5ListItem}"/>
-    <Style x:Key="MinimalScrollBar" TargetType="ScrollBar">
-      <Setter Property="Width" Value="4"/><Setter Property="MinWidth" Value="0"/><Setter Property="Background" Value="Transparent"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
-        <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="Vertical" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
-          <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" IsTabStop="False" Opacity="0"/></Track.DecreaseRepeatButton>
-          <Track.Thumb><Thumb MinWidth="0" MinHeight="23"><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="{DynamicResource MutedText}" Opacity="0.72" CornerRadius="2"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
-          <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" IsTabStop="False" Opacity="0"/></Track.IncreaseRepeatButton>
-        </Track>
-      </ControlTemplate></Setter.Value></Setter>
-    </Style>
-    <Style x:Key="DeviceScrollViewer" TargetType="ScrollViewer">
-      <Setter Property="VerticalScrollBarVisibility" Value="Auto"/><Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollViewer"><Grid ClipToBounds="True">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/></Grid.ColumnDefinitions>
-        <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" ClipToBounds="True" CanContentScroll="{TemplateBinding CanContentScroll}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" Margin="{TemplateBinding Padding}"/>
-        <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Style="{StaticResource MinimalScrollBar}" Orientation="Vertical" HorizontalAlignment="Right" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Value="{Binding VerticalOffset, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}"/>
-      </Grid></ControlTemplate></Setter.Value></Setter>
-    </Style>
    </ResourceDictionary>
   </Application.Resources>
 </Application>

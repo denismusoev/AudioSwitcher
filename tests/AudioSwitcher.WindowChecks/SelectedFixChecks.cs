@@ -62,18 +62,20 @@ internal static class SelectedFixChecks
                         return Task.CompletedTask;
                     });
 
-                    await Check("Internal pages clear on exit while Back restores the invoking row", async () =>
+                    await Check("Window drawer returns to the invoking row", async () =>
                     {
                         Call(window, "Execute", PadAction.Right);
-                        list.SelectedIndex = 1;
+                        programs.Move(1);
+                        Require(list.SelectedIndex == 1 && list.ItemContainerGenerator.ContainerFromIndex(1) is ListBoxItem invokingRow && invokingRow.IsKeyboardFocused,
+                            "Test setup did not focus the invoking row");
                         await programs.ConfirmAsync();
-                        var actions = (ListBox)programs.FindName("ProgramActions");
-                        Require(list.SelectedIndex == -1, "The hidden program list kept its selected row");
-                        Require(actions.SelectedIndex == 0, $"The internal page opened at row {actions.SelectedIndex} instead of the first row");
-                        actions.SelectedIndex = 1;
-                        Require(programs.Back(), "Back did not close the internal page");
-                        Require(actions.SelectedIndex == -1, "The internal page kept its selection after exit");
-                        Require(list.SelectedIndex == 1, $"Back restored row {list.SelectedIndex} instead of the invoking row");
+                        Require(((FrameworkElement)window.FindName("WindowPickerOverlay")).IsVisible,
+                            "Multiple windows did not open the shared window drawer");
+                        Call(window, "Execute", PadAction.Close);
+                        Require(!((FrameworkElement)window.FindName("WindowPickerOverlay")).IsVisible,
+                            "Back did not close the window drawer");
+                        Require(list.SelectedIndex == 1 && list.ItemContainerGenerator.ContainerFromIndex(1) is ListBoxItem row && row.IsKeyboardFocused,
+                            $"Back restored row {list.SelectedIndex}; focused element is {(Keyboard.FocusedElement as FrameworkElement)?.Name ?? Keyboard.FocusedElement?.GetType().Name ?? "null"}; row 0 focused={((ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0)).IsKeyboardFocused}");
                     });
 
                     await Check("Manifest games show their source and hide the edit command", () =>

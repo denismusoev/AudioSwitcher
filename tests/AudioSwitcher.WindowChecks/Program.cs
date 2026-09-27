@@ -530,7 +530,7 @@ internal static class Program
                             ((TextBox)dialog.FindName("EntryName")).Text = "Saved fixture 世界";
                             ((TextBox)dialog.FindName("EntryArguments")).Text = "--saved \"two words\"";
                             ((TextBox)dialog.FindName("EntryTarget")).Text = Environment.ProcessPath!;
-                            ((Button)dialog.FindName("SaveEntry")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            _ = dialog.SaveAsync();
                         });
                         await view.ConfirmAsync(); await firstDrive;
                         var saved = store.Load().Catalog.Entries.Single();
@@ -619,7 +619,7 @@ internal static class Program
                             var selected = ((TextBox)dialog.FindName("EntryTarget")).Text;
                             if (!string.Equals(selected, shortcut, StringComparison.OrdinalIgnoreCase)) throw new Exception($"Picker dereferenced shortcut: expected {shortcut}, got {selected}");
                             ((TextBox)dialog.FindName("EntryName")).Text = "Own shortcut";
-                            ((Button)dialog.FindName("SaveEntry")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            await dialog.SaveAsync();
                             await WaitForEditorClose(dialog);
                             completion.SetResult();
                         }

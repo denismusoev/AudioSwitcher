@@ -14,6 +14,5 @@
     <Border x:Name="DirectoryAttribute" Grid.Column="2" Grid.Row="1" Focusable="True" PreviewMouseLeftButtonDown="AttributeMouseDown" Style="{StaticResource Attribute}"><Border Style="{StaticResource AttributeContent}"><StackPanel VerticalAlignment="Center"><Label x:Name="DirectoryLabel" Content="Рабочая папка (необязательно)" Target="{Binding ElementName=EntryDirectory}"/><TextBox x:Name="EntryDirectory" AutomationProperties.Name="Рабочая папка" AutomationProperties.LabeledBy="{Binding ElementName=DirectoryLabel}"/></StackPanel></Border></Border>
   </Grid>
    <TextBlock Grid.Row="2" x:Name="EditorError" Foreground="{DynamicResource ErrorText}" FontSize="{DynamicResource Font24}" TextWrapping="Wrap" Margin="0,9" AutomationProperties.LiveSetting="Polite"/>
-  <Button x:Name="SaveEntry" Visibility="Collapsed" Content="Сохранить" Click="SaveClick"/>
  </Grid>
 </UserControl>

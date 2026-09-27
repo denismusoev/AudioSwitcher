@@ -12,7 +12,7 @@ public enum WindowSelectionAction { Move, Close }
 
 public partial class ProgramsView : UserControl
 {
-    private sealed record Choice(string Id, string DisplayName, string DisplayDetails = "", WindowTarget? Window = null);
+    private sealed record Choice(string Id, string DisplayName, string DisplayDetails = "", WindowTarget? Window = null, bool IsDestructive = false);
     private sealed record CatalogRow(LaunchEntry Entry)
     {
         public string DisplayName => Entry.Name;
@@ -48,6 +48,7 @@ public partial class ProgramsView : UserControl
     public event Action? ContextChanged;
     public event Action? TransferCompleted;
     public event Action<string>? DeleteConfirmationRequested;
+    public event Action? ResetConfirmationRequested;
     public event Action<WindowSelectionAction, RunningProgram>? WindowSelectionRequested;
     public WindowMoveBehavior MoveBehavior { get; set; } = WindowMoveBehavior.KeepUtilityFocused;
 
@@ -202,26 +203,12 @@ public partial class ProgramsView : UserControl
         var rows = catalog.Catalog.Entries.Select(e => new CatalogRow(e)).ToArray();
         LaunchList.ItemsSource = rows;
         LaunchList.SelectedItem = listActive ? rows.FirstOrDefault(r => r.Entry.Id == selected) ?? rows.FirstOrDefault() : null;
-        AddProgram.IsEnabled = catalog.CanSave;
-        ResetCatalog.Visibility = catalog.CanSave ? Visibility.Collapsed : Visibility.Visible;
     }
     private void UpdateLists()
     {
         ListTitle.Text = Navigation.LaunchList ? "Для запуска" : "Запущенные приложения";
-        ListSubtitle.Text = "";
-        ListSubtitle.Visibility = Visibility.Collapsed;
         RunningList.Visibility = Navigation.LaunchList ? Visibility.Collapsed : Visibility.Visible;
         LaunchList.Visibility = Navigation.LaunchList ? Visibility.Visible : Visibility.Collapsed;
-        CatalogTools.Visibility = Visibility.Collapsed;
-        RunningMode.SetResourceReference(Control.ForegroundProperty, Navigation.LaunchList ? "MutedText" : "Text");
-        LaunchMode.SetResourceReference(Control.ForegroundProperty, Navigation.LaunchList ? "Text" : "MutedText");
-        RunningMode.IsSelected = !Navigation.LaunchList; LaunchMode.IsSelected = Navigation.LaunchList;
-        RunningMode.SetResourceReference(Control.BorderBrushProperty, Navigation.LaunchList ? "WindowSurface" : "Accent");
-        LaunchMode.SetResourceReference(Control.BorderBrushProperty, Navigation.LaunchList ? "Accent" : "WindowSurface");
-        RunningMode.FontWeight = Navigation.LaunchList ? FontWeights.Normal : FontWeights.Normal;
-        LaunchMode.FontWeight = Navigation.LaunchList ? FontWeights.Normal : FontWeights.Normal;
-        System.Windows.Automation.AutomationProperties.SetHelpText(RunningMode, Navigation.LaunchList ? "Показать запущенные программы" : "Выбранный список");
-        System.Windows.Automation.AutomationProperties.SetHelpText(LaunchMode, Navigation.LaunchList ? "Выбранный список" : "Показать программы для запуска");
         UpdateEmpty(); ContextChanged?.Invoke();
     }
     private void UpdateEmpty()
@@ -364,8 +351,6 @@ public partial class ProgramsView : UserControl
                 RequestDeleteConfirmation(); break;
             case "delete-entry":
                 await ConfirmDeleteAsync(); break;
-            case "reset":
-                if (await RunOperation("Сохранение копии…", async _ => { await Task.Run(store.Reset); catalog = store.Load(); ShowCatalog(); return new(ProgramResultCode.Success, "Каталог сброшен. Копия исходного файла сохранена"); })) ReturnToList(); break;
         }
     }
     private void ReturnToList(bool focus = true)
@@ -384,7 +369,7 @@ public partial class ProgramsView : UserControl
         if (!Navigation.LaunchList) { await ConfirmAsync(); return; }
         currentEntry = (LaunchList.SelectedItem as CatalogRow)?.Entry; currentProgram = null;
         if (currentEntry != null && !ProgramActionPolicy.CanEditLaunchEntry(currentEntry)) return;
-        if (!catalog.CanSave) { ResetClick(this, new RoutedEventArgs()); return; }
+        if (!catalog.CanSave) { RequestResetConfirmation(); return; }
         if (currentEntry == null) ShowPanel(ProgramPanel.Actions, "Каталог запуска", "Каталог пуст", new[] { new Choice("add", "Добавить программу") });
         else ShowActions();
     }
@@ -396,17 +381,17 @@ public partial class ProgramsView : UserControl
             return;
         }
         if (Navigation.LaunchList)
-            ShowPanel(ProgramPanel.Actions, "Каталог запуска", currentEntry?.Name ?? "Каталог пуст", new[] { new Choice("edit", "Редактировать"), new Choice("delete", "Удалить запись"), new Choice("add", "Добавить программу") });
+            ShowPanel(ProgramPanel.Actions, "Каталог запуска", currentEntry?.Name ?? "Каталог пуст", new[] { new Choice("edit", "Редактировать"), new Choice("delete", "Удалить запись", IsDestructive: true), new Choice("add", "Добавить программу") });
         else
-            ShowPanel(ProgramPanel.Actions, currentProgram?.Name ?? "Программа", string.Join(", ", currentProgram?.Windows.Select(w => w.Screen).Distinct() ?? []), new[] { new Choice("move", "На главный экран"), new Choice("close", "Закрыть окна") });
+            ShowPanel(ProgramPanel.Actions, currentProgram?.Name ?? "Программа", string.Join(", ", currentProgram?.Windows.Select(w => w.Screen).Distinct() ?? []), new[] { new Choice("move", "На главный экран"), new Choice("close", "Закрыть окна", IsDestructive: true) });
     }
     private void ShowCloseChoices(RunningProgram program)
     {
         var selected = ProgramActions.SelectedItem as Choice;
         bool restoreKeyboardFocus = ProgramActions.IsKeyboardFocusWithin;
         currentProgram = program;
-        var choices = program.Windows.Select(window => new Choice("close-window", window.DisplayName, window.DisplayDetails, window))
-            .Append(new Choice("close-all", "Закрыть все окна", $"Окна: {program.Windows.Count}"))
+        var choices = program.Windows.Select(window => new Choice("close-window", window.DisplayName, window.DisplayDetails, window, IsDestructive: true))
+            .Append(new Choice("close-all", "Закрыть все окна", $"Окна: {program.Windows.Count}", IsDestructive: true))
             .ToArray();
         if (Navigation.Panel == ProgramPanel.CloseWindows)
         {
@@ -428,19 +413,7 @@ public partial class ProgramsView : UserControl
         if (!InPanel) RememberAndClearListSelection();
         else ProgramActions.SelectedIndex = -1;
         Navigation.Panel = panel; PanelTitle.Text = title; PanelDescription.Text = description;
-        bool confirmation = panel is ProgramPanel.ConfirmDelete or ProgramPanel.ConfirmReset;
-        PanelSurface.Background = confirmation ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(185, 8, 10, 13)) : System.Windows.Media.Brushes.Transparent;
-        PanelContainer.Width = confirmation ? 680 : double.NaN;
-        PanelContainer.MaxHeight = confirmation ? 350 : double.PositiveInfinity;
-        PanelContainer.HorizontalAlignment = confirmation ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
-        PanelContainer.VerticalAlignment = confirmation ? VerticalAlignment.Center : VerticalAlignment.Stretch;
-        PanelContainer.Background = confirmation ? (System.Windows.Media.Brush)FindResource("DialogSurface") : System.Windows.Media.Brushes.Transparent;
-        PanelContainer.BorderBrush = confirmation ? (System.Windows.Media.Brush)FindResource("Line") : System.Windows.Media.Brushes.Transparent;
-        PanelContainer.BorderThickness = confirmation ? new Thickness(1) : new Thickness(0);
-        PanelContainer.Padding = confirmation ? new Thickness(24) : new Thickness(0);
-        PanelDescription.Text = confirmation ? Navigation.LaunchList ? "Каталог запуска" : "Запущенные программы" : description;
-        PanelWarning.Text = "";
-        PanelWarning.Visibility = Visibility.Collapsed;
+        PanelDescription.Text = description;
         PanelFeedback.Text = ""; PanelFeedback.ToolTip = null; PanelFeedback.Visibility = Visibility.Collapsed;
         PanelFeedback.SetResourceReference(TextBlock.ForegroundProperty, "MutedText");
         ProgramActions.ItemsSource = choices; ProgramActions.SelectedIndex = 0;
@@ -554,14 +527,13 @@ public partial class ProgramsView : UserControl
         else ReturnToList();
         UpdateEmpty(); ContextChanged?.Invoke();
     }
-    private void RunningClick(object sender, RoutedEventArgs e) => SelectMode(false);
-    private void LaunchClick(object sender, RoutedEventArgs e) => SelectMode(true);
-    private async void AddClick(object sender, RoutedEventArgs e) => await EditEntry(null);
-    private void ResetClick(object sender, RoutedEventArgs e)
+    private void RequestResetConfirmation()
     {
-        if (IsBusy || catalog.CanSave) return;
-        ShowPanel(ProgramPanel.ConfirmReset, "Сбросить каталог?", "Исходный файл будет сохранён рядом с каталогом как .bak. Список для запуска станет пустым.",
-            new[] { new Choice("cancel", "Отмена"), new Choice("reset", "Сохранить копию и сбросить") });
+        if (IsBusy || catalog.CanSave || ResetConfirmationRequested == null) return;
+        Navigation.Panel = ProgramPanel.ConfirmReset;
+        ProgramActions.SelectedIndex = -1;
+        ResetConfirmationRequested.Invoke();
+        ContextChanged?.Invoke();
     }
     private ListBoxItem? pressedItem;
     private void ListPress(object sender, MouseButtonEventArgs e)
@@ -602,13 +574,7 @@ public partial class ProgramsView : UserControl
 
     private void RequestDeleteConfirmation()
     {
-        if (currentEntry == null || !ProgramActionPolicy.CanEditLaunchEntry(currentEntry)) return;
-        if (DeleteConfirmationRequested == null)
-        {
-            ShowPanel(ProgramPanel.ConfirmDelete, $"Удалить запись «{currentEntry.Name}»?", "Приложение и файл останутся на компьютере.",
-                new[] { new Choice("cancel", "Отмена"), new Choice("delete-entry", "Удалить запись") });
-            return;
-        }
+        if (currentEntry == null || !ProgramActionPolicy.CanEditLaunchEntry(currentEntry) || DeleteConfirmationRequested == null) return;
         deleteReturnPanel = Navigation.Panel == ProgramPanel.Actions ? ProgramPanel.Actions : ProgramPanel.List;
         Navigation.Panel = ProgramPanel.ConfirmDelete;
         ProgramActions.SelectedIndex = -1;
@@ -616,15 +582,34 @@ public partial class ProgramsView : UserControl
         ContextChanged?.Invoke();
     }
 
-    public void CancelDeleteConfirmation()
+    public void CancelConfirmation()
     {
-        if (Navigation.Panel != ProgramPanel.ConfirmDelete) return;
-        if (deleteReturnPanel == ProgramPanel.Actions)
+        if (Navigation.Panel == ProgramPanel.ConfirmReset)
+        {
+            Navigation.Panel = ProgramPanel.List;
+            RestoreListSelection();
+            ContextChanged?.Invoke();
+        }
+        else if (Navigation.Panel == ProgramPanel.ConfirmDelete && deleteReturnPanel == ProgramPanel.Actions)
         {
             Navigation.Panel = ProgramPanel.Actions;
             ShowActions();
         }
-        else ReturnToList();
+        else if (Navigation.Panel == ProgramPanel.ConfirmDelete) ReturnToList();
+    }
+
+    public async Task ConfirmResetAsync()
+    {
+        if (Navigation.Panel != ProgramPanel.ConfirmReset) return;
+        Navigation.Panel = ProgramPanel.List;
+        ReturnToList();
+        if (await RunOperation("Сохранение копии…", async _ =>
+        {
+            await Task.Run(store.Reset);
+            catalog = store.Load();
+            ShowCatalog();
+            return new(ProgramResultCode.Success, "Каталог сброшен. Копия исходного файла сохранена");
+        })) ReturnToList();
     }
 
     public async Task ConfirmDeleteAsync()
