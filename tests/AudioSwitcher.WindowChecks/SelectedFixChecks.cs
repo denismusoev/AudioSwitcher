@@ -36,7 +36,7 @@ internal static class SelectedFixChecks
                 {
                     await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                     ((DispatcherTimer)typeof(MainWindow).GetField("refreshTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
-                    ((DispatcherTimer)typeof(MainWindow).GetField("padTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
+                    ((GamepadInputService)typeof(MainWindow).GetField("gamepadInput", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).SetDeliveryEnabled(false);
                     Call(window, "SwitchSection", AppSection.Running);
                     var programs = (ProgramsView)window.FindName("Programs");
                     programs.Leave();
@@ -222,16 +222,50 @@ internal static class SelectedFixChecks
                         return Task.CompletedTask;
                     });
 
-                    await Check("A chrome-only context update does not interrupt navigation repeat", () =>
+                    await Check("Main window no longer owns a gamepad dispatcher timer", () =>
                     {
-                        var gate = (InputGate)(typeof(MainWindow).GetField("gate", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window)
-                            ?? throw new Exception("Main window input gate is unavailable"));
-                        var programs = (ProgramsView)window.FindName("Programs");
-                        var changed = (Action?)(typeof(ProgramsView).GetField("ContextChanged", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(programs));
-                        Require(gate.Accept(PadAction.Down, 0), "Initial navigation action was rejected");
-                        changed?.Invoke();
-                        Require(gate.Accept(PadAction.Down, 400), "A visual context update swallowed a valid navigation repeat");
-                        gate.Accept(PadAction.None, 410);
+                        Require(typeof(MainWindow).GetField("padTimer", BindingFlags.Instance | BindingFlags.NonPublic) == null,
+                            "Gamepad polling is still coupled to the UI dispatcher");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Context-changing direction reports source suppression", () =>
+                    {
+                        var handle = typeof(MainWindow).GetMethod("HandleGamepadCommand", BindingFlags.Instance | BindingFlags.NonPublic)
+                            ?? throw new Exception("Gamepad command routing boundary is missing");
+                        Call(window, "SwitchSection", AppSection.Control);
+                        var result = (GamepadCommandResult)handle.Invoke(window,
+                            [new GamepadCommand(0, GamepadControl.DPadRight, PadAction.Right, 0, false)])!;
+                        Require(result == GamepadCommandResult.ContextChanged, $"Section entry returned {result}");
+                        Call(window, "Execute", PadAction.Left);
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Close remains available after overlay entry", () =>
+                    {
+                        var handle = typeof(MainWindow).GetMethod("HandleGamepadCommand", BindingFlags.Instance | BindingFlags.NonPublic)
+                            ?? throw new Exception("Gamepad command routing boundary is missing");
+                        Call(window, "OpenSettings");
+                        var result = (GamepadCommandResult)handle.Invoke(window,
+                            [new GamepadCommand(0, GamepadControl.Close, PadAction.Close, 0, false)])!;
+                        Require(result == GamepadCommandResult.ContextChanged, $"Overlay close returned {result}");
+                        Require(!((FrameworkElement)window.FindName("SettingsSurface")).IsVisible, "Settings overlay stayed open");
+                        return Task.CompletedTask;
+                    });
+
+                    await Check("Busy blocks actions without changing input context", () =>
+                    {
+                        var handle = typeof(MainWindow).GetMethod("HandleGamepadCommand", BindingFlags.Instance | BindingFlags.NonPublic)
+                            ?? throw new Exception("Gamepad command routing boundary is missing");
+                        var busy = typeof(MainWindow).GetField("busy", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                        busy.SetValue(window, true);
+                        try
+                        {
+                            var result = (GamepadCommandResult)handle.Invoke(window,
+                                [new GamepadCommand(0, GamepadControl.DPadDown, PadAction.Down, 0, false)])!;
+                            Require(result == GamepadCommandResult.Blocked, $"Busy action returned {result}");
+                        }
+                        finally { busy.SetValue(window, false); }
                         return Task.CompletedTask;
                     });
 

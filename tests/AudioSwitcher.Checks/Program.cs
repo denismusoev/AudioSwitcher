@@ -26,21 +26,6 @@ Check("Missing display rejects operation", () => {
     try { DisplayLayout.Rebase([new("a", 0, 0)], "missing"); } catch (ArgumentException) { return; }
     throw new Exception("Missing display was accepted");
 });
-Check("Confirm fires once until release", () => {
-    var gate = new InputGate();
-    Equal(true, gate.Accept(PadAction.Confirm, 0));
-    Equal(false, gate.Accept(PadAction.Confirm, 1000));
-    gate.Accept(PadAction.None, 1010);
-    Equal(true, gate.Accept(PadAction.Confirm, 1020));
-});
-Check("Navigation repeats after initial delay", () => {
-    var gate = new InputGate();
-    Equal(true, gate.Accept(PadAction.Down, 0));
-    Equal(false, gate.Accept(PadAction.Down, 200));
-    Equal(true, gate.Accept(PadAction.Down, 400));
-    Equal(false, gate.Accept(PadAction.Down, 450));
-    Equal(true, gate.Accept(PadAction.Down, 540));
-});
 Check("Only user application windows are included, including minimized and unnamed", () => {
     var facts = new ProgramWindowFacts(true, false, false, false, false, true, false, "Game", "C:\\Games\\game.exe");
     Equal(true, ProgramFilter.Include(facts));
@@ -117,30 +102,6 @@ Check("Right or confirm enters a section and left or close returns", () => {
 Check("Shoulder buttons have no navigation action", () => {
     Equal(PadAction.None, Gamepad.Map(new Gamepad.State { Buttons = 0x0100 }));
     Equal(PadAction.None, Gamepad.Map(new Gamepad.State { Buttons = 0x0200 }));
-});
-Check("Confirmation is rearmed only after all gamepad controls are released", () => {
-    var gate = new InputGate();
-    Equal(true, gate.Accept(PadAction.Confirm, 0));
-    gate.RequireRelease();
-    Equal(false, gate.Accept(PadAction.Confirm, 1000));
-    Equal(false, gate.Accept(PadAction.Down, 1200));
-    Equal(false, gate.Accept(PadAction.None, 1300));
-    Equal(true, gate.Accept(PadAction.Confirm, 1400));
-    Equal(false, gate.Accept(PadAction.Confirm, 2000));
-});
-Check("A release barrier does not swallow a new action after neutral input", () => {
-    var gate = new InputGate();
-    Equal(false, gate.Accept(PadAction.None, 0));
-    gate.RequireRelease();
-    Equal(true, gate.Accept(PadAction.Close, 10));
-});
-Check("TV shortcut actions do not repeat while held", () => {
-    var gate = new InputGate();
-    Equal(true, gate.Accept(PadAction.Secondary, 0));
-    Equal(false, gate.Accept(PadAction.Secondary, 900));
-    gate.Accept(PadAction.None, 910);
-    Equal(true, gate.Accept(PadAction.Settings, 920));
-    Equal(false, gate.Accept(PadAction.Settings, 1500));
 });
 Check("Button edges fire once", () => {
     var engine = new GamepadInputEngine();

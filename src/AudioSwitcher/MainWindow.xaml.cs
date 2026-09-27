@@ -24,9 +24,8 @@ public partial class MainWindow : Window
 
     private readonly AudioService audio = new();
     private readonly DisplayService display = new();
-    private readonly InputGate gate = new();
+    private readonly GamepadInputService gamepadInput;
     private readonly RefreshBackoff controlRefreshBackoff = new();
-    private readonly DispatcherTimer padTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     private readonly DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly CancellationTokenSource lifetime = new();
     private readonly CancellationToken lifetimeToken;
@@ -35,7 +34,7 @@ public partial class MainWindow : Window
     private readonly ApplicationSettingsStore settingsStore;
     private readonly InterfaceSettings interfaceSettings;
     private NavigationState navigation => Programs.Navigation;
-    private bool busy, loadingDevices, padArmed, pickingDisplay, pickerLoadFailed, controlRefreshing, closed;
+    private bool busy, loadingDevices, pickingDisplay, pickerLoadFailed, controlRefreshing, closed;
     private int deviceLoadGeneration;
     private WindowSelectionAction windowSelectionAction;
     private RunningProgram? windowSelectionProgram;
@@ -57,6 +56,15 @@ public partial class MainWindow : Window
         lifetimeToken = lifetime.Token;
         this.settingsStore = settingsStore;
         InitializeComponent();
+        gamepadInput = new GamepadInputService(
+            new Gamepad(),
+            new GamepadInputEngine(),
+            action =>
+            {
+                if (!closed && !Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                    _ = Dispatcher.InvokeAsync(action, DispatcherPriority.Input);
+            },
+            HandleGamepadCommand);
         Programs.MoveBehavior = settingsStore.Load().MoveBehavior;
         Programs.TransferCompleted += Close;
         Programs.StatusChanged += SetStatus;
@@ -68,17 +76,18 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => UpdateAppearance();
         SourceInitialized += (_, _) => ApplyPreferredSize();
         Loaded += OnLoaded;
+        Activated += (_, _) => gamepadInput.SetDeliveryEnabled(true);
+        Deactivated += (_, _) => gamepadInput.SetDeliveryEnabled(false);
         Closed += (_, _) =>
         {
             closed = true;
             lifetime.Cancel();
-            padTimer.Stop();
             refreshTimer.Stop();
+            _ = gamepadInput.DisposeAsync();
             Programs.Leave();
             interfaceSettings.Dispose();
             lifetime.Dispose();
         };
-        padTimer.Tick += (_, _) => PollPad();
         refreshTimer.Tick += async (_, _) => { if (!busy && overlay == OverlayMode.None) await RefreshCurrentAsync(); };
     }
 
@@ -88,7 +97,8 @@ public partial class MainWindow : Window
         UpdateChrome();
         FocusSectionTab();
         Activate();
-        padTimer.Start();
+        gamepadInput.SetDeliveryEnabled(IsActive);
+        gamepadInput.Start(lifetimeToken);
         refreshTimer.Start();
         await RefreshControlAsync();
         if (!closed) await SynchronizeGamesAsync(quiet: true);
@@ -244,7 +254,6 @@ public partial class MainWindow : Window
         navigation.Section = section;
         navigation.LaunchList = section == AppSection.Launch;
         SetPrimarySurfaceVisibility(true);
-        gate.RequireRelease();
         if (section == AppSection.Control) ObserveUiTask(RefreshControlAsync(), "Не удалось обновить устройства");
         else
         {
@@ -259,7 +268,6 @@ public partial class MainWindow : Window
     {
         Programs.Leave();
         SetPrimarySurfaceVisibility(true);
-        gate.RequireRelease();
         if (navigation.Section == AppSection.Control) ObserveUiTask(RefreshControlAsync(), "Не удалось обновить устройства");
         else
         {
@@ -275,7 +283,6 @@ public partial class MainWindow : Window
         if (navigation.Navigate(action) != NavigationTransition.EnteredSection) return;
         if (navigation.Section == AppSection.Control) AudioControlCard.Focus();
         else Programs.Enter();
-        gate.RequireRelease();
         UpdateChrome();
     }
 
@@ -284,7 +291,6 @@ public partial class MainWindow : Window
         if (navigation.Navigate(action) != NavigationTransition.LeftSection) return false;
         Programs.ExitCurrentPage();
         FocusSectionTab();
-        gate.RequireRelease();
         UpdateChrome();
         return true;
     }
@@ -468,7 +474,6 @@ public partial class MainWindow : Window
         ModalBackdrop.Visibility = mode is OverlayMode.Devices or OverlayMode.WindowSelection or OverlayMode.Confirmation ? Visibility.Visible : Visibility.Collapsed;
         if (mode == OverlayMode.Settings) SetPrimarySurfaceVisibility(false);
         WindowFrame.IsEnabled = false;
-        gate.RequireRelease();
         UpdateChrome();
     }
 
@@ -491,7 +496,6 @@ public partial class MainWindow : Window
             else if (overlay == OverlayMode.Devices) FocusSelection(Devices);
             else if (overlay == OverlayMode.WindowSelection) FocusSelection(WindowChoices);
             else SettingsToggle.Focus();
-            gate.RequireRelease();
             UpdateChrome();
             return true;
         }
@@ -517,7 +521,6 @@ public partial class MainWindow : Window
         confirmationAction = null;
         WindowChoices.ItemsSource = null;
         windowSelectionProgram = null;
-        gate.RequireRelease();
         UpdateChrome();
         return true;
     }
@@ -614,29 +617,39 @@ public partial class MainWindow : Window
         Programs.Visibility = visible && navigation.Section != AppSection.Control ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void PollPad()
+    private GamepadCommandResult HandleGamepadCommand(GamepadCommand command)
     {
-        bool connected = Gamepad.TryRead(out var action);
-        if (!connected || !IsActive) { padArmed = false; gate.Accept(PadAction.None, Environment.TickCount64); return; }
-        if (!padArmed) { if (action == PadAction.None) padArmed = true; return; }
-        if (gate.Accept(action, Environment.TickCount64)) Execute(action);
+        if (closed) return GamepadCommandResult.Blocked;
+        return ExecuteAction(command.Action);
     }
 
-    private void Execute(PadAction action)
+    private void Execute(PadAction action) => _ = ExecuteAction(action);
+
+    private GamepadCommandResult ExecuteAction(PadAction action)
     {
-        if (action == PadAction.Settings && overlay == OverlayMode.None && !Programs.InPanel) { OpenSettings(); return; }
+        if (action == PadAction.Settings && overlay == OverlayMode.None && !Programs.InPanel)
+        {
+            OpenSettings();
+            return GamepadCommandResult.ContextChanged;
+        }
         if (action == PadAction.Close)
         {
-            if (CloseDetails()) return;
-            if (navigation.SectionActive && navigation.Section != AppSection.Control && Programs.Back()) return;
-            if (LeaveSection(PadAction.Close)) return;
+            if (CloseDetails()) return GamepadCommandResult.ContextChanged;
+            if (navigation.SectionActive && navigation.Section != AppSection.Control && Programs.Back()) return GamepadCommandResult.ContextChanged;
+            if (LeaveSection(PadAction.Close)) return GamepadCommandResult.ContextChanged;
             Close();
-            return;
+            return GamepadCommandResult.Handled;
         }
-        if (busy || Programs.IsBusy) return;
+        if (busy || Programs.IsBusy) return GamepadCommandResult.Blocked;
         if (overlay != OverlayMode.None)
         {
-            if (overlay == OverlayMode.Error) { if (action == PadAction.Up) ErrorScroll.LineUp(); else if (action == PadAction.Down) ErrorScroll.LineDown(); else if (action == PadAction.Confirm) CloseDetails(); }
+            if (overlay == OverlayMode.Error)
+            {
+                if (action == PadAction.Up) ErrorScroll.LineUp();
+                else if (action == PadAction.Down) ErrorScroll.LineDown();
+                else if (action == PadAction.Confirm) { CloseDetails(); return GamepadCommandResult.ContextChanged; }
+                else return GamepadCommandResult.Unhandled;
+            }
             else if (overlay == OverlayMode.Devices && action == PadAction.Up) MoveOverlay(-1);
             else if (overlay == OverlayMode.Devices && action == PadAction.Down) MoveOverlay(1);
             else if (overlay == OverlayMode.WindowSelection && action == PadAction.Up) MoveOverlaySelection(WindowChoices, -1);
@@ -651,7 +664,8 @@ public partial class MainWindow : Window
                 else if (overlay == OverlayMode.Confirmation) ObserveUiTask(ApplyConfirmation(), "Не удалось выполнить действие");
                 else ToggleSetting();
             }
-            return;
+            else return GamepadCommandResult.Unhandled;
+            return GamepadCommandResult.Handled;
         }
         switch (action)
         {
@@ -659,36 +673,55 @@ public partial class MainWindow : Window
             case PadAction.Down:
                 if (!navigation.SectionActive)
                 {
-                    if (navigation.Navigate(action) == NavigationTransition.SectionChanged) ApplySectionChange();
+                    if (navigation.Navigate(action) == NavigationTransition.SectionChanged)
+                    {
+                        ApplySectionChange();
+                        return GamepadCommandResult.ContextChanged;
+                    }
+                    return GamepadCommandResult.Unhandled;
                 }
-                else if (navigation.Section == AppSection.Control) MoveControl(action == PadAction.Up ? -1 : 1);
+                if (navigation.Section == AppSection.Control) MoveControl(action == PadAction.Up ? -1 : 1);
                 else Programs.Move(action == PadAction.Up ? -1 : 1);
-                break;
+                return GamepadCommandResult.Handled;
             case PadAction.Left:
-                if (Programs.Editing) Programs.MoveHorizontal(-1);
-                else LeaveSection();
-                break;
+                if (Programs.Editing) { Programs.MoveHorizontal(-1); return GamepadCommandResult.Handled; }
+                return LeaveSection() ? GamepadCommandResult.ContextChanged : GamepadCommandResult.Unhandled;
             case PadAction.Right:
-                if (Programs.Editing) Programs.MoveHorizontal(1);
-                else ActivateSection();
-                break;
+                if (Programs.Editing) { Programs.MoveHorizontal(1); return GamepadCommandResult.Handled; }
+                bool wasActive = navigation.SectionActive;
+                ActivateSection();
+                return !wasActive && navigation.SectionActive ? GamepadCommandResult.ContextChanged : GamepadCommandResult.Unhandled;
             case PadAction.Confirm:
-                if (!navigation.SectionActive) { ActivateSection(PadAction.Confirm); break; }
-                if (navigation.Section == AppSection.Control) OpenDevicePicker(Keyboard.FocusedElement == DisplayControlCard);
-                else ObserveUiTask(Programs.ConfirmAsync(), "Не удалось выполнить действие");
-                break;
+                if (!navigation.SectionActive)
+                {
+                    ActivateSection(PadAction.Confirm);
+                    return GamepadCommandResult.ContextChanged;
+                }
+                if (navigation.Section == AppSection.Control)
+                {
+                    OpenDevicePicker(Keyboard.FocusedElement == DisplayControlCard);
+                    return GamepadCommandResult.ContextChanged;
+                }
+                ObserveUiTask(Programs.ConfirmAsync(), "Не удалось выполнить действие");
+                return GamepadCommandResult.Handled;
             case PadAction.Secondary:
-                if (!navigation.SectionActive) break;
+                if (!navigation.SectionActive) return GamepadCommandResult.Unhandled;
                 if (Programs.Editing) Programs.DeleteEditing();
                 else if (navigation.Section != AppSection.Control) ObserveUiTask(Programs.SecondaryAsync(), "Не удалось выполнить действие");
-                break;
+                else return GamepadCommandResult.Unhandled;
+                return GamepadCommandResult.Handled;
             case PadAction.CreateOrEdit:
-                if (!navigation.SectionActive) break;
+                if (!navigation.SectionActive) return GamepadCommandResult.Unhandled;
                 if (Programs.Editing) ObserveUiTask(Programs.CatalogAsync(), "Не удалось сохранить запись");
                 else if (navigation.Section == AppSection.Launch) ObserveUiTask(Programs.CreateAsync(), "Не удалось создать запись");
                 else OpenDetails();
-                break;
-            case PadAction.Details: if (navigation.SectionActive) OpenDetails(Programs.InPanel ? Programs.DetailsText : null); break;
+                return GamepadCommandResult.Handled;
+            case PadAction.Details:
+                if (!navigation.SectionActive) return GamepadCommandResult.Unhandled;
+                OpenDetails(Programs.InPanel ? Programs.DetailsText : null);
+                return GamepadCommandResult.ContextChanged;
+            default:
+                return GamepadCommandResult.Unhandled;
         }
     }
 

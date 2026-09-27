@@ -36,7 +36,7 @@ internal static class ApprovedDesignChecks
                 {
                     await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                     ((DispatcherTimer)typeof(MainWindow).GetField("refreshTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
-                    ((DispatcherTimer)typeof(MainWindow).GetField("padTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
+                    ((GamepadInputService)typeof(MainWindow).GetField("gamepadInput", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).SetDeliveryEnabled(false);
 
                     Check("Default surface uses the approved narrower size", () =>
                     {

@@ -42,7 +42,7 @@ internal static class Program
                 await Dispatcher.Yield(DispatcherPriority.ContextIdle);
                 // Keep fixtures independent of live device refresh and controller input.
                 ((DispatcherTimer)typeof(MainWindow).GetField("refreshTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
-                ((DispatcherTimer)typeof(MainWindow).GetField("padTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
+                ((GamepadInputService)typeof(MainWindow).GetField("gamepadInput", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).SetDeliveryEnabled(false);
                 foreach (int height in new[] { 550, 400 })
                 {
                     await Check($"Last audio row reaches viewport bottom at height {height}", async () => {
