@@ -19,6 +19,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--scroll-reveal")) return ScrollBehaviorChecks.Run();
         if (args.Contains("--page-layout")) return PageLayoutChecks.Run();
         if (args.Contains("--selected-dpi")) return SelectedFixChecks.RunDpi();
         if (args.Contains("--selection-navigation")) return SelectedFixChecks.RunSelectionNavigation();

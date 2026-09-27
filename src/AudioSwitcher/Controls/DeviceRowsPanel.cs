@@ -120,6 +120,17 @@ public sealed class DeviceRowsPanel : Panel, IScrollInfo
         return clamped - current < next - clamped ? current : next;
     }
 
+    private double SnapForwardToRowBoundary(double offset)
+    {
+        double clamped = Math.Clamp(offset, 0, maxOffset);
+        foreach (double rowOffset in rowOffsets)
+        {
+            if (rowOffset >= clamped - 0.01)
+                return Math.Min(rowOffset, maxOffset);
+        }
+        return maxOffset;
+    }
+
     public void SetVerticalOffset(double offset)
     {
         if (double.IsNaN(offset)) throw new ArgumentOutOfRangeException(nameof(offset));
@@ -152,7 +163,9 @@ public sealed class DeviceRowsPanel : Panel, IScrollInfo
         if (content.Top < verticalOffset)
             SetVerticalOffset(content.Top);
         else if (content.Bottom > verticalOffset + ViewportHeight)
-            SetVerticalOffset(rowHeights[index] <= ViewportHeight ? rowOffsets[index] : content.Bottom - ViewportHeight);
+            SetVerticalOffset(rowHeights[index] <= ViewportHeight
+                ? SnapForwardToRowBoundary(content.Bottom - ViewportHeight)
+                : content.Bottom - ViewportHeight);
 
         var visible = content;
         visible.Offset(0, -verticalOffset);
