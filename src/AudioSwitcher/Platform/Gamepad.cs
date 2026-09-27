@@ -2,11 +2,30 @@ using System.Runtime.InteropServices;
 using AudioSwitcher.Core;
 
 namespace AudioSwitcher.Platform;
-public static class Gamepad
+public sealed class Gamepad : IGamepadSource
 {
     [ThreadStatic] private static PadAction[]? controllerActions;
     [StructLayout(LayoutKind.Sequential)] public struct State { public uint Packet; public ushort Buttons; public byte LeftTrigger, RightTrigger; public short LeftX, LeftY, RightX, RightY; }
     [DllImport("xinput1_4.dll", EntryPoint = "XInputGetState")] private static extern uint GetState(uint index, out State state);
+    public int Read(Span<GamepadSnapshot> destination)
+    {
+        if (destination.Length < 4) throw new ArgumentException("Four controller slots are required.", nameof(destination));
+        for (uint i = 0; i < 4; i++)
+        {
+            bool connected = GetState(i, out var state) == 0;
+            destination[(int)i] = connected
+                ? new((int)i, true, state.Packet, (GamepadButtons)state.Buttons, state.LeftX, state.LeftY)
+                : new((int)i, false, 0, GamepadButtons.None, 0, 0);
+        }
+        return 4;
+    }
+
+    public static bool ProbeConnected()
+    {
+        for (uint i = 0; i < 4; i++)
+            if (GetState(i, out _) == 0) return true;
+        return false;
+    }
     public static bool TryRead(out PadAction action)
     {
         var actions = controllerActions ??= new PadAction[4];

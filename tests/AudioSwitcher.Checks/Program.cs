@@ -3,6 +3,7 @@ using AudioSwitcher.Platform;
 
 int passed = 0, failed = 0;
 void Check(string name, Action test) { try { test(); Console.WriteLine($"PASS {name}"); passed++; } catch (Exception e) { Console.WriteLine($"FAIL {name}: {e.Message}"); failed++; } }
+async Task CheckAsync(string name, Func<Task> test) { try { await test(); Console.WriteLine($"PASS {name}"); passed++; } catch (Exception e) { Console.WriteLine($"FAIL {name}: {e.Message}"); failed++; } }
 void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"Expected {expected}, got {actual}"); }
 Check("Refresh failures use bounded backoff and success resets it", () => {
     var backoff = new RefreshBackoff();
@@ -254,5 +255,99 @@ Check("Diagnostics retain the newest 256 relevant events", () => {
     var diagnostics = engine.GetDiagnostics();
     Equal(256, diagnostics.Count); Equal(300L, diagnostics[^1].Timestamp);
 });
+await CheckAsync("Polling schedules one drain", async () => {
+    var source = new SequenceGamepadSource(index => index switch
+    {
+        0 => new(0, true, 1, GamepadButtons.None, 0, 0),
+        1 => new(0, true, 2, GamepadButtons.A, 0, 0),
+        _ => new(0, true, (uint)(index + 1), GamepadButtons.None, 0, 0)
+    });
+    var scheduled = new List<Action>();
+    var handled = new List<GamepadCommand>();
+    await using var service = new GamepadInputService(source, new(), action => { lock (scheduled) scheduled.Add(action); }, command => { handled.Add(command); return GamepadCommandResult.Handled; }, new AdvancingTimeProvider(10), TimeSpan.FromMilliseconds(1));
+    service.Start(CancellationToken.None);
+    if (!SpinWait.SpinUntil(() => { lock (scheduled) return scheduled.Count == 1; }, 500)) throw new Exception("No drain was scheduled");
+    await Task.Delay(20);
+    lock (scheduled) Equal(1, scheduled.Count);
+    scheduled.Single()();
+    Equal(1, handled.Count); Equal(PadAction.Confirm, handled[0].Action);
+});
+await CheckAsync("Queue keeps initial edges ahead of repeats and Close", async () => {
+    var source = new SequenceGamepadSource(index => index switch
+    {
+        0 => new(0, true, 1, GamepadButtons.None, 0, 0),
+        1 => new(0, true, 2, GamepadButtons.DPadDown, 0, 0),
+        < 8 => new(0, true, (uint)(index + 1), GamepadButtons.DPadDown, 0, 0),
+        _ => new(0, true, (uint)(index + 1), GamepadButtons.DPadDown | GamepadButtons.B, 0, 0)
+    });
+    var scheduled = new List<Action>();
+    var handled = new List<GamepadCommand>();
+    await using var service = new GamepadInputService(source, new(), action => { lock (scheduled) scheduled.Add(action); }, command => { handled.Add(command); return GamepadCommandResult.Handled; }, new AdvancingTimeProvider(500), TimeSpan.FromMilliseconds(1), queueCapacity: 3);
+    service.Start(CancellationToken.None);
+    if (!SpinWait.SpinUntil(() => source.Reads >= 12, 1000)) throw new Exception("Polling did not advance");
+    await service.DisposeAsync();
+    lock (scheduled) Equal(1, scheduled.Count);
+    scheduled.Single()();
+    if (!handled.Any(command => command.Action == PadAction.Down && !command.IsRepeat)) throw new Exception("Initial direction edge was discarded");
+    if (!handled.Any(command => command.Action == PadAction.Close)) throw new Exception("Close edge was discarded");
+});
+await CheckAsync("Cancellation stops polling", async () => {
+    var source = new SequenceGamepadSource(index => new(0, true, (uint)index, GamepadButtons.None, 0, 0));
+    using var cancellation = new CancellationTokenSource();
+    await using var service = new GamepadInputService(source, new(), _ => { }, _ => GamepadCommandResult.Handled, new AdvancingTimeProvider(10), TimeSpan.FromMilliseconds(1));
+    service.Start(cancellation.Token);
+    if (!SpinWait.SpinUntil(() => source.Reads >= 3, 500)) throw new Exception("Polling never started");
+    cancellation.Cancel();
+    await Task.Delay(20);
+    int stoppedAt = source.Reads;
+    await Task.Delay(20);
+    Equal(stoppedAt, source.Reads);
+});
+await CheckAsync("A delayed poll does not catch up in a burst", async () => {
+    var source = new SequenceGamepadSource(index => {
+        if (index == 0) Thread.Sleep(40);
+        return new(0, true, (uint)index, GamepadButtons.None, 0, 0);
+    });
+    await using var service = new GamepadInputService(source, new(), _ => { }, _ => GamepadCommandResult.Handled, new AdvancingTimeProvider(10), TimeSpan.FromMilliseconds(5));
+    service.Start(CancellationToken.None);
+    await Task.Delay(75);
+    if (source.Reads > 8) throw new Exception($"Observed catch-up burst with {source.Reads} reads");
+});
+await CheckAsync("Missing XInput stops controller polling", async () => {
+    var source = new ThrowingGamepadSource();
+    await using var service = new GamepadInputService(source, new(), _ => { }, _ => GamepadCommandResult.Handled, new AdvancingTimeProvider(10), TimeSpan.FromMilliseconds(1));
+    service.Start(CancellationToken.None);
+    await Task.Delay(30);
+    Equal(1, source.Reads);
+});
 Console.WriteLine($"Passed: {passed}, Failed: {failed}, Skipped: 0");
 return failed == 0 ? 0 : 1;
+
+sealed class SequenceGamepadSource(Func<int, GamepadSnapshot> next) : IGamepadSource
+{
+    private int reads;
+    public int Reads => Volatile.Read(ref reads);
+    public int Read(Span<GamepadSnapshot> destination)
+    {
+        int index = Interlocked.Increment(ref reads) - 1;
+        destination[0] = next(index);
+        return 1;
+    }
+}
+
+sealed class ThrowingGamepadSource : IGamepadSource
+{
+    public int Reads { get; private set; }
+    public int Read(Span<GamepadSnapshot> destination)
+    {
+        Reads++;
+        throw new DllNotFoundException("xinput1_4.dll");
+    }
+}
+
+sealed class AdvancingTimeProvider(long step) : TimeProvider
+{
+    private long timestamp = -step;
+    public override long TimestampFrequency => 1000;
+    public override long GetTimestamp() => Interlocked.Add(ref timestamp, step);
+}

@@ -17,7 +17,7 @@ public partial class App : Application
         {
             try
             {
-                var data = new { Audio = new AudioService().GetDevices(), Displays = new DisplayService().GetDevices(), Gamepad = Gamepad.TryRead(out _) };
+                var data = new { Audio = new AudioService().GetDevices(), Displays = new DisplayService().GetDevices(), Gamepad = Gamepad.ProbeConnected() };
                 File.WriteAllText(e.Args[1], JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
                 Shutdown(0);
             }
